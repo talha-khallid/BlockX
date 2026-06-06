@@ -255,6 +255,8 @@
                         </div>
                         
                         <div class="interactive-list-manager">
+                            <h4>Path & Children Blocking</h4>
+                            <p class="help-text" style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 12px;">Blocks the specified path and any pages under it.</p>
                             <div class="input-row">
                                 <input type="text" id="page-input" placeholder="Add new page path (e.g. reddit.com/r/gaming)">
                                 <button id="add-page-btn" class="btn btn-secondary">
@@ -263,6 +265,21 @@
                                 </button>
                             </div>
                             <div id="page-list" class="tag-cloud">
+                                <!-- Populated by JS -->
+                            </div>
+                        </div>
+
+                        <div class="interactive-list-manager" style="margin-top: 24px;">
+                            <h4>Exact Page Blocking</h4>
+                            <p class="help-text" style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 12px;">Blocks ONLY the exact page entered. Child pages will NOT be blocked.</p>
+                            <div class="input-row">
+                                <input type="text" id="exact-page-input" placeholder="Add exact page (e.g. x.com/search)">
+                                <button id="add-exact-page-btn" class="btn btn-secondary">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                    Add
+                                </button>
+                            </div>
+                            <div id="exact-page-list" class="tag-cloud">
                                 <!-- Populated by JS -->
                             </div>
                         </div>

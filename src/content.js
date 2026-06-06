@@ -35,6 +35,16 @@
     verifyPageSafety();
   });
 
+  document.addEventListener('yt-navigate-finish', () => {
+    verifyPageSafety();
+  });
+  
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local') {
+      loadConfig().then(() => verifyPageSafety());
+    }
+  });
+
   let filterRegex = null;
 
   const storage = chrome.storage.session || chrome.storage.local;
@@ -100,9 +110,27 @@
     });
   }
 
+  function isExactBlockedPage(url) {
+    if (!url || !CONFIG.EXACT_PAGE_URLS) return false;
+    try {
+      const parsedUrl = new URL(url);
+      const hostAndPath = (parsedUrl.hostname.replace(/^www\./i, '') + parsedUrl.pathname).toLowerCase();
+      const hostPathAndQuery = (parsedUrl.hostname.replace(/^www\./i, '') + parsedUrl.pathname + parsedUrl.search).toLowerCase();
+      
+      return CONFIG.EXACT_PAGE_URLS.some(p => {
+        const clean = p.trim().toLowerCase().replace(/^https?:\/\//i, '').replace(/\/$/, '');
+        if (clean.includes('?')) {
+            return hostPathAndQuery === clean || hostPathAndQuery === clean + '/';
+        } else {
+            return hostAndPath === clean || hostAndPath === clean + '/';
+        }
+      });
+    } catch { return false; }
+  }
+
   // --- PHASE 1: Instant synchronous checks (custom domains, pages, keywords in URL) ---
   const currentHostname = window.location.hostname;
-  if (isBlockedDomain(currentHostname) || isBlockedPage(window.location.href) || isExplicit(window.location.href)) {
+  if (isBlockedDomain(currentHostname) || isBlockedPage(window.location.href) || isExactBlockedPage(window.location.href) || isExplicit(window.location.href)) {
     handleBlock();
     return;
   }
@@ -137,6 +165,7 @@
     if (
       isBlockedDomain(currentHost) ||
       isBlockedPage(currentUrl) ||
+      isExactBlockedPage(currentUrl) ||
       isExplicit(document.title) ||
       isExplicit(currentUrl)
     ) {

@@ -24,6 +24,9 @@ let CONFIG = {
     'bing.com/search?q=porn'
   ],
 
+  // Specific Exact Pages to block (no child pages)
+  EXACT_PAGE_URLS: [],
+
   GAMES: [
     { name: "Tower Blocks", path: "assets/blocked-pages/tower-blocks.html" },
     { name: "Rubiks Cube", path: "assets/blocked-pages/rubiks-cube.html" },
@@ -47,6 +50,7 @@ async function loadConfig() {
         'google.com/search?q=porn',
         'bing.com/search?q=porn'
       ],
+      CUSTOM_EXACT_PAGES: [],
       ACTIVE_GAME_INDEX: -1
     }, (items) => {
       CONFIG.BLOCK_METHOD = items.BLOCK_METHOD;
@@ -54,6 +58,7 @@ async function loadConfig() {
       CONFIG.KEYWORDS = items.CUSTOM_KEYWORDS;
       CONFIG.DOMAINS = items.CUSTOM_DOMAINS;
       CONFIG.PAGE_URLS = items.CUSTOM_PAGES;
+      CONFIG.EXACT_PAGE_URLS = items.CUSTOM_EXACT_PAGES;
       CONFIG.ACTIVE_GAME_INDEX = items.ACTIVE_GAME_INDEX;
       resolve(CONFIG);
     });

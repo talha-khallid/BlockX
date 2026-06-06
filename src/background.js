@@ -138,6 +138,29 @@ async function updateBlockingRules() {
     [...new Set(config.KEYWORDS)].forEach(k => addRule(9, k));
     config.PAGE_URLS.forEach(p => addRule(8, p));
 
+    const addExactPageRule = (priority, filter) => {
+      if (rules.length >= DYNAMIC_RULE_LIMIT) return false;
+      let clean = filter.trim().toLowerCase().replace(/^https?:\/\//i, '').replace(/\/$/, '');
+      if (!clean || !isAscii(clean)) return false;
+      
+      const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      rules.push({
+        id: ruleId++,
+        priority,
+        action,
+        condition: { 
+            regexFilter: `^https?://(www\\.)?${escapeRegExp(clean)}/?([\\?#].*)?$`,
+            resourceTypes: ['main_frame', 'sub_frame'] 
+        }
+      });
+      return true;
+    };
+
+    if (config.EXACT_PAGE_URLS) {
+      config.EXACT_PAGE_URLS.forEach(p => addExactPageRule(8, p));
+    }
+
     console.log(`[BlockX] Applying ${rules.length}/${DYNAMIC_RULE_LIMIT} dynamic user rules starting at ID 10000.`);
 
     await chrome.declarativeNetRequest.updateDynamicRules({
@@ -248,6 +271,25 @@ function shouldBlockUrl(urlStr, config) {
       return urlLower.includes(clean);
     });
     if (pageMatch) return true;
+  }
+
+  // 2.5 Custom exact pages
+  if (config.EXACT_PAGE_URLS && config.EXACT_PAGE_URLS.length > 0) {
+    try {
+      const parsedUrl = new URL(urlStr);
+      const hostAndPath = (parsedUrl.hostname.replace(/^www\./i, '') + parsedUrl.pathname).toLowerCase();
+      const hostPathAndQuery = (parsedUrl.hostname.replace(/^www\./i, '') + parsedUrl.pathname + parsedUrl.search).toLowerCase();
+      
+      const exactMatch = config.EXACT_PAGE_URLS.some(p => {
+        const clean = p.trim().toLowerCase().replace(/^https?:\/\//i, '').replace(/\/$/, '');
+        if (clean.includes('?')) {
+            return hostPathAndQuery === clean || hostPathAndQuery === clean + '/';
+        } else {
+            return hostAndPath === clean || hostAndPath === clean + '/';
+        }
+      });
+      if (exactMatch) return true;
+    } catch { /* ignore */ }
   }
 
   // 3. Custom keywords
