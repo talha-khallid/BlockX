@@ -352,12 +352,38 @@ function setupListManager(inputId, btnId, listId, stateKey) {
             val = cleanVal;
         }
         
-        if (val && !state[stateKey].includes(val)) {
-            state[stateKey].push(val);
-            renderList(listId, stateKey);
-            input.value = '';
-            saveState();
+        const finalizeAdd = (finalVal) => {
+            if (finalVal && !state[stateKey].includes(finalVal)) {
+                state[stateKey].push(finalVal);
+                renderList(listId, stateKey);
+                input.value = '';
+                saveState();
+            }
+        };
+
+        if (stateKey === 'CUSTOM_ALLOWED_DOMAINS') {
+            if (state.CUSTOM_DOMAINS.includes(val)) {
+                showToast("Cannot whitelist a domain that is in your custom blocklist.");
+                return;
+            }
+            chrome.runtime.sendMessage({ action: 'isMasterBlocked', domain: val }, (response) => {
+                if (response && response.blocked) {
+                    showToast("Cannot whitelist globally restricted sites.");
+                } else {
+                    finalizeAdd(val);
+                }
+            });
+            return;
         }
+
+        if (stateKey === 'CUSTOM_DOMAINS') {
+            if (state.CUSTOM_ALLOWED_DOMAINS && state.CUSTOM_ALLOWED_DOMAINS.includes(val)) {
+                showToast("This domain is in your whitelist. Remove it there first.");
+                return;
+            }
+        }
+
+        finalizeAdd(val);
     };
 
     btn.addEventListener('click', addItem);
