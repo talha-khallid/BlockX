@@ -429,15 +429,15 @@ input:checked + .slider:before { transform: translateX(20px); }
 
 /* Gateway Overlay */
 .gateway-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: var(--bg-app); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.gateway-card { background: var(--bg-card); padding: 40px; border-radius: 20px; box-shadow: var(--shadow-md); text-align: center; max-width: 360px; width: 90%; border: 1px solid var(--border-base); animation: gatewayPop 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
-@keyframes gatewayPop { from { transform: scale(0.98); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.gateway-card { background: var(--bg-card); padding: 40px; border-radius: 20px; box-shadow: var(--shadow-md); text-align: center; max-width: 360px; width: 90%; border: 1px solid var(--border-base); }
 .gateway-brand { width: 64px; height: 64px; margin: 0 auto 20px; }
 .gateway-logo { width: 100%; height: 100%; object-fit: contain; }
 .gateway-card h2 { font-size: 22px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.02em; }
 .gateway-card p { color: var(--text-secondary); font-size: 14px; margin-bottom: 24px; }
 .gateway-input-group { display: flex; flex-direction: column; gap: 12px; }
-#gateway-password { height: 42px; padding: 0 16px; text-align: center; background: var(--bg-app); }
-#gateway-unlock-btn { height: 42px; font-size: 14px; justify-content: center; border-radius: 10px; }
+#gateway-password { text-align: center; background: var(--bg-app); }
+#gateway-unlock-btn { font-size: 14px; justify-content: center; border-radius: 10px; }
+#gateway-unlock-btn:hover { transform: none; box-shadow: none; }
 .error-msg { color: #ef4444; font-size: 12px; font-weight: 600; margin-top: 16px; }
 
 .toast-notification {
