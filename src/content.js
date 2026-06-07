@@ -22,7 +22,28 @@
     (document.head || document.documentElement).appendChild(shortsStyle);
   }
 
+  // Fetch latest config from storage
   await loadConfig();
+
+  // ------------------------------------------------------------------
+  // 🛡️ OMNI-WHITELIST: The Absolute Source of Truth
+  // ------------------------------------------------------------------
+  function isWhitelisted() {
+    if (!CONFIG || !CONFIG.ALLOWED_DOMAINS || CONFIG.ALLOWED_DOMAINS.length === 0) return false;
+    
+    const currentHost = window.location.hostname.toLowerCase();
+    return CONFIG.ALLOWED_DOMAINS.some(domain => {
+      const cleanDomain = domain.trim().toLowerCase();
+      return currentHost === cleanDomain || currentHost.endsWith('.' + cleanDomain);
+    });
+  }
+
+  // [LAYER 1] - Initial Load Bypass: Shut down completely if whitelisted
+  if (isWhitelisted()) {
+    console.log('🛡️ [BlockX] Site is whitelisted. Shutting down all content script monitoring.');
+    return; 
+  }
+  // ------------------------------------------------------------------
 
   // --- 2. LISTEN FOR MAIN WORLD SPA BLOCKED NOTIFICATIONS & POPSTATE ---
   window.addEventListener('message', (event) => {
@@ -46,18 +67,15 @@
   });
 
   let filterRegex = null;
-
   const storage = chrome.storage.session || chrome.storage.local;
 
   async function prepareFilter() {
     return new Promise((resolve) => {
       storage.get(['CACHED_BADWORDS'], async (result) => {
         let badwords = null;
-
         if (result && result.CACHED_BADWORDS) {
           badwords = result.CACHED_BADWORDS;
         }
-
         if (!badwords) {
           try {
             const r = await fetch(chrome.runtime.getURL('assets/data/badwords.json'));
@@ -67,7 +85,6 @@
             badwords = [];
           }
         }
-
         const allKeywords = CONFIG.KEYWORDS.concat(badwords);
         filterRegex = createOptimizedFilter(allKeywords);
         resolve();
@@ -76,6 +93,9 @@
   }
 
   function handleBlock() {
+    // [LAYER 2] - Final Execution Bypass: Never redirect if somehow whitelisted
+    if (isWhitelisted()) return;
+
     const hostname = window.location.hostname;
     const targetUrl = getBlockUrl(CONFIG.BLOCK_METHOD, hostname);
 
@@ -128,30 +148,29 @@
     } catch { return false; }
   }
 
-  // --- PHASE 1: Instant synchronous checks (custom domains, pages, keywords in URL) ---
+  // --- PHASE 1: Instant synchronous checks ---
   const currentHostname = window.location.hostname;
-  if (isBlockedDomain(currentHostname) || isBlockedPage(window.location.href) || isExactBlockedPage(window.location.href) || isExplicit(window.location.href)) {
+  if (!isWhitelisted() && (isBlockedDomain(currentHostname) || isBlockedPage(window.location.href) || isExactBlockedPage(window.location.href) || isExplicit(window.location.href))) {
     handleBlock();
     return;
   }
 
-  // --- PHASE 2: Inject CSS barrier to keep page hidden while async checks run ---
+  // --- PHASE 2: Inject CSS barrier ---
   const style = document.createElement('style');
   style.textContent = 'html { visibility: hidden !important; background: #ffffff !important; }';
   (document.head || document.documentElement).appendChild(style);
 
-  // --- PHASE 3: Check master domain list via background (works even on cold service worker wake-up) ---
+  // --- PHASE 3: Check master domain list via background ---
   try {
     const masterCheck = await chrome.runtime.sendMessage({
       action: 'isMasterBlocked',
       domain: currentHostname
     });
-    if (masterCheck?.blocked) {
+    if (masterCheck?.blocked && !isWhitelisted()) {
       handleBlock();
       return;
     }
   } catch (e) {
-    // Extension context may be unavailable on very first load — non-fatal
     console.warn('[BlockX] Could not check master domain list:', e);
   }
 
@@ -159,6 +178,9 @@
   await prepareFilter();
 
   function verifyPageSafety() {
+    // [LAYER 3] - Runtime Bypass: Stop observer cycles and checks if whitelisted
+    if (isWhitelisted()) return false;
+
     const currentUrl = window.location.href;
     const currentHost = window.location.hostname;
 
@@ -169,7 +191,7 @@
       isExplicit(document.title) ||
       isExplicit(currentUrl)
     ) {
-      observer.disconnect();
+      if (typeof observer !== 'undefined') observer.disconnect();
       handleBlock();
       return true;
     }
@@ -180,7 +202,9 @@
     if (!verifyPageSafety()) {
       if (style.parentNode) style.parentNode.removeChild(style);
     }
-    observer.disconnect();
+    if (typeof observer !== 'undefined' && isWhitelisted()) {
+      observer.disconnect();
+    }
   };
 
   const observer = new MutationObserver(() => {

@@ -157,6 +157,25 @@ async function updateBlockingRules() {
       return true;
     };
 
+    const addAllowRule = (priority, filter) => {
+      if (rules.length >= DYNAMIC_RULE_LIMIT) return false;
+      const clean = filter.trim().toLowerCase();
+      if (!clean) return false;
+      const asciiDomain = toPunycode(clean);
+      if (!isAscii(asciiDomain)) return false;
+      rules.push({
+        id: ruleId++,
+        priority,
+        action: { type: 'allow' },
+        condition: { urlFilter: `||${asciiDomain}^`, resourceTypes: ['main_frame', 'sub_frame'] }
+      });
+      return true;
+    };
+
+    if (config.ALLOWED_DOMAINS) {
+      [...new Set(config.ALLOWED_DOMAINS)].forEach(d => addAllowRule(100, d));
+    }
+
     if (config.EXACT_PAGE_URLS) {
       config.EXACT_PAGE_URLS.forEach(p => addExactPageRule(8, p));
     }
@@ -194,6 +213,8 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
       'CUSTOM_DOMAINS',
       'CUSTOM_KEYWORDS',
       'CUSTOM_PAGES',
+      'CUSTOM_EXACT_PAGES',
+      'CUSTOM_ALLOWED_DOMAINS',
       'BLOCK_METHOD',
       'ACTIVE_GAME_INDEX'
     ].some(key => changes[key] !== undefined);
@@ -248,6 +269,19 @@ function shouldBlockUrl(urlStr, config) {
     urlLower.startsWith('chrome://') ||
     urlLower.startsWith('about:')
   ) return false;
+
+  // 0. Allowed Domains (Whitelist override)
+  if (config.ALLOWED_DOMAINS && config.ALLOWED_DOMAINS.length > 0) {
+    try {
+      const parsed = new URL(urlStr);
+      const hostname = parsed.hostname.toLowerCase();
+      const isAllowed = config.ALLOWED_DOMAINS.some(d => {
+        const clean = d.trim().toLowerCase();
+        return hostname === clean || hostname.endsWith('.' + clean);
+      });
+      if (isAllowed) return false; // Bypass all blocking
+    } catch { /* ignore */ }
+  }
 
   // 1. Custom domains
   if (config.DOMAINS && config.DOMAINS.length > 0) {

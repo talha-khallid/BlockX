@@ -220,6 +220,21 @@
                                 <!-- Populated by JS -->
                             </div>
                         </div>
+
+                        <div class="interactive-list-manager" style="margin-top: 24px;">
+                            <h4>Allowed Domains (Whitelist)</h4>
+                            <p class="help-text" style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 12px;">Traffic to these hostnames will BYPASS all blocking rules.</p>
+                            <div class="input-row">
+                                <input type="text" id="allowed-domain-input" placeholder="Add domain to allow (e.g. youtube.com)">
+                                <button id="add-allowed-domain-btn" class="btn btn-secondary">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                    Add
+                                </button>
+                            </div>
+                            <div id="allowed-domain-list" class="tag-cloud">
+                                <!-- Populated by JS -->
+                            </div>
+                        </div>
                     </div>
                 </div>
 

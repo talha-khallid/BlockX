@@ -15,6 +15,7 @@ let state = {
     CUSTOM_KEYWORDS: [],
     CUSTOM_PAGES: [],
     CUSTOM_EXACT_PAGES: [],
+    CUSTOM_ALLOWED_DOMAINS: [],
     ACTIVE_GAME_INDEX: -1,
     SECURITY_ENABLED: false,
     PASSWORD: '',
@@ -46,6 +47,7 @@ async function init() {
     setupListManager('keyword-input', 'add-keyword-btn', 'keyword-list', 'CUSTOM_KEYWORDS');
     setupListManager('page-input', 'add-page-btn', 'page-list', 'CUSTOM_PAGES');
     setupListManager('exact-page-input', 'add-exact-page-btn', 'exact-page-list', 'CUSTOM_EXACT_PAGES');
+    setupListManager('allowed-domain-input', 'add-allowed-domain-btn', 'allowed-domain-list', 'CUSTOM_ALLOWED_DOMAINS');
     
     const customUrlInput = document.getElementById('custom-redirect-input');
     const customUrlBtn = document.getElementById('save-custom-url-btn');
@@ -69,6 +71,7 @@ async function init() {
     renderList('keyword-list', 'CUSTOM_KEYWORDS');
     renderList('page-list', 'CUSTOM_PAGES');
     renderList('exact-page-list', 'CUSTOM_EXACT_PAGES');
+    renderList('allowed-domain-list', 'CUSTOM_ALLOWED_DOMAINS');
 
     // 4. Prevention: Tamper-proof the gateway
     monitorGatewayTampering();
@@ -220,6 +223,7 @@ function saveState() {
         CUSTOM_KEYWORDS: state.CUSTOM_KEYWORDS,
         CUSTOM_PAGES: state.CUSTOM_PAGES,
         CUSTOM_EXACT_PAGES: state.CUSTOM_EXACT_PAGES,
+        CUSTOM_ALLOWED_DOMAINS: state.CUSTOM_ALLOWED_DOMAINS,
         ACTIVE_GAME_INDEX: state.ACTIVE_GAME_INDEX,
         SECURITY_ENABLED: state.SECURITY_ENABLED,
         PASSWORD: state.PASSWORD,
@@ -287,7 +291,7 @@ function setupListManager(inputId, btnId, listId, stateKey) {
         if (!val) return;
 
         // Domain Sanitization & Strict Validation
-        if (stateKey === 'CUSTOM_DOMAINS') {
+        if (stateKey === 'CUSTOM_DOMAINS' || stateKey === 'CUSTOM_ALLOWED_DOMAINS') {
             let cleanVal = val;
             
             // Add a temporary protocol if not present to let the URL parser handle it reliably
@@ -481,6 +485,7 @@ async function restore_options() {
             CUSTOM_KEYWORDS: [],
             CUSTOM_PAGES: [],
             CUSTOM_EXACT_PAGES: [],
+            CUSTOM_ALLOWED_DOMAINS: [],
             ACTIVE_GAME_INDEX: -1,
             SECURITY_ENABLED: false,
             PASSWORD: '',
@@ -535,6 +540,7 @@ function exportSettings() {
         "CUSTOM_KEYWORDS",
         "CUSTOM_PAGES",
         "CUSTOM_EXACT_PAGES",
+        "CUSTOM_ALLOWED_DOMAINS",
         "ACTIVE_GAME_INDEX",
         "SECURITY_ENABLED",
         "PASSWORD",
@@ -583,6 +589,7 @@ function handleImport(event) {
                 CUSTOM_KEYWORDS: Array.isArray(imported.CUSTOM_KEYWORDS) ? imported.CUSTOM_KEYWORDS : [],
                 CUSTOM_PAGES: Array.isArray(imported.CUSTOM_PAGES) ? imported.CUSTOM_PAGES : [],
                 CUSTOM_EXACT_PAGES: Array.isArray(imported.CUSTOM_EXACT_PAGES) ? imported.CUSTOM_EXACT_PAGES : [],
+                CUSTOM_ALLOWED_DOMAINS: Array.isArray(imported.CUSTOM_ALLOWED_DOMAINS) ? imported.CUSTOM_ALLOWED_DOMAINS : [],
                 ACTIVE_GAME_INDEX: typeof imported.ACTIVE_GAME_INDEX === 'number' ? imported.ACTIVE_GAME_INDEX : -1,
                 SECURITY_ENABLED: !!imported.SECURITY_ENABLED,
                 PASSWORD: imported.PASSWORD || "",
