@@ -1,6 +1,17 @@
 // content.js
 (async function() {
-  // --- 1. INSTANT CSS INJECTION TO HIDE YOUTUBE SHORTS UI ELEMENTS ---
+  // ------------------------------------------------------------------
+  // 🛑 1. INSTANT SYNCHRONOUS BARRIER (THE FLASH FIX)
+  // Hide the page immediately BEFORE any network requests or DOM parsing
+  // ------------------------------------------------------------------
+  const securityBarrier = document.createElement('style');
+  securityBarrier.id = 'blockx-security-barrier';
+  securityBarrier.textContent = 'html { visibility: hidden !important; opacity: 0 !important; background: #ffffff !important; }';
+  if (document.documentElement) {
+    document.documentElement.appendChild(securityBarrier);
+  }
+
+  // --- 2. YOUTUBE SHORTS CSS INJECTION ---
   if (window.location.hostname.includes('youtube.com')) {
     const shortsStyle = document.createElement('style');
     shortsStyle.textContent = `
@@ -22,15 +33,13 @@
     (document.head || document.documentElement).appendChild(shortsStyle);
   }
 
-  // Fetch latest config from storage
+  // ------------------------------------------------------------------
+  // 🛡️ 3. CONFIG & OMNI-WHITELIST
+  // ------------------------------------------------------------------
   await loadConfig();
 
-  // ------------------------------------------------------------------
-  // 🛡️ OMNI-WHITELIST: The Absolute Source of Truth
-  // ------------------------------------------------------------------
   function isWhitelisted() {
     if (!CONFIG || !CONFIG.ALLOWED_DOMAINS || CONFIG.ALLOWED_DOMAINS.length === 0) return false;
-    
     const currentHost = window.location.hostname.toLowerCase();
     return CONFIG.ALLOWED_DOMAINS.some(domain => {
       const cleanDomain = domain.trim().toLowerCase();
@@ -38,27 +47,22 @@
     });
   }
 
-  // [LAYER 1] - Initial Load Bypass: Shut down completely if whitelisted
+  // If the site is whitelisted, drop the barrier and shut down completely.
   if (isWhitelisted()) {
-    console.log('🛡️ [BlockX] Site is whitelisted. Shutting down all content script monitoring.');
+    console.log('🛡️ [BlockX] Site is whitelisted. Removing barrier.');
+    if (securityBarrier.parentNode) securityBarrier.parentNode.removeChild(securityBarrier);
     return; 
   }
-  // ------------------------------------------------------------------
 
-  // --- 2. LISTEN FOR MAIN WORLD SPA BLOCKED NOTIFICATIONS & POPSTATE ---
+  // --- 4. LISTEN FOR MAIN WORLD SPA BLOCKED NOTIFICATIONS & POPSTATE ---
   window.addEventListener('message', (event) => {
     if (event.data && (event.data.type === 'SHORTS_BLOCKED' || event.data.type === 'URL_CHANGED')) {
       verifyPageSafety();
     }
   });
 
-  window.addEventListener('popstate', () => {
-    verifyPageSafety();
-  });
-
-  document.addEventListener('yt-navigate-finish', () => {
-    verifyPageSafety();
-  });
+  window.addEventListener('popstate', () => { verifyPageSafety(); });
+  document.addEventListener('yt-navigate-finish', () => { verifyPageSafety(); });
   
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local') {
@@ -93,7 +97,6 @@
   }
 
   function handleBlock() {
-    // [LAYER 2] - Final Execution Bypass: Never redirect if somehow whitelisted
     if (isWhitelisted()) return;
 
     const hostname = window.location.hostname;
@@ -101,9 +104,12 @@
 
     if (window.location.href.includes('chrome-extension://')) return;
 
-    if (CONFIG.BLOCK_METHOD === 'blocked_page') {
-      chrome.runtime.sendMessage({ action: 'triggerBlock' });
+    if (window.top === window.self) {
+        if (CONFIG.BLOCK_METHOD === 'blocked_page') {
+          chrome.runtime.sendMessage({ action: 'triggerBlock' });
+        }
     }
+    
     window.location.href = targetUrl;
   }
 
@@ -150,17 +156,12 @@
 
   // --- PHASE 1: Instant synchronous checks ---
   const currentHostname = window.location.hostname;
-  if (!isWhitelisted() && (isBlockedDomain(currentHostname) || isBlockedPage(window.location.href) || isExactBlockedPage(window.location.href) || isExplicit(window.location.href))) {
+  if (!isWhitelisted() && (isBlockedDomain(currentHostname) || isBlockedPage(window.location.href) || isExactBlockedPage(window.location.href))) {
     handleBlock();
     return;
   }
 
-  // --- PHASE 2: Inject CSS barrier ---
-  const style = document.createElement('style');
-  style.textContent = 'html { visibility: hidden !important; background: #ffffff !important; }';
-  (document.head || document.documentElement).appendChild(style);
-
-  // --- PHASE 3: Check master domain list via background ---
+  // --- PHASE 2: Check master domain list via background ---
   try {
     const masterCheck = await chrome.runtime.sendMessage({
       action: 'isMasterBlocked',
@@ -174,11 +175,10 @@
     console.warn('[BlockX] Could not check master domain list:', e);
   }
 
-  // --- PHASE 4: Prepare keyword filter and do full page verification ---
+  // --- PHASE 3: Prepare keyword filter and do full page verification ---
   await prepareFilter();
 
   function verifyPageSafety() {
-    // [LAYER 3] - Runtime Bypass: Stop observer cycles and checks if whitelisted
     if (isWhitelisted()) return false;
 
     const currentUrl = window.location.href;
@@ -200,7 +200,9 @@
 
   const cleanup = () => {
     if (!verifyPageSafety()) {
-      if (style.parentNode) style.parentNode.removeChild(style);
+      if (securityBarrier && securityBarrier.parentNode) {
+          securityBarrier.parentNode.removeChild(securityBarrier);
+      }
     }
     if (typeof observer !== 'undefined' && isWhitelisted()) {
       observer.disconnect();

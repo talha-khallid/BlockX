@@ -7,19 +7,9 @@ const DYNAMIC_RULE_LIMIT = chrome.declarativeNetRequest.MAX_NUMBER_OF_DYNAMIC_AN
 // MASTER DOMAIN LIST (Simple JSON Set — O(1) lookup, service-worker safe)
 // ------------------------------------------------------------------
 
-/** Set of all blocked domains from domains.json */
 let masterDomainSet = new Set();
-
-/**
- * Single promise that resolves once the domain list is loaded.
- * Re-used across all callers so we never load twice in one worker lifetime.
- */
 let domainListPromise = null;
 
-/**
- * Loads domains.json and stores every entry in a Set for O(1) lookup.
- * Safe to call multiple times — subsequent calls return the same promise.
- */
 function ensureDomainListLoaded() {
   if (domainListPromise) return domainListPromise;
   domainListPromise = (async () => {
@@ -36,19 +26,12 @@ function ensureDomainListLoaded() {
   return domainListPromise;
 }
 
-/**
- * Returns true if the given domain (or any of its parent domains) is in the master list.
- * @param {string} domain - normalised hostname, e.g. "sub.pornhub.com"
- * @returns {boolean}
- */
 function isMasterBlocked(domain) {
   if (!domain || masterDomainSet.size === 0) return false;
   const clean = domain.toLowerCase().replace(/^www\./, '');
 
-  // Exact match
   if (masterDomainSet.has(clean)) return true;
 
-  // Walk up the subdomain chain: sub.example.com → example.com
   const parts = clean.split('.');
   for (let i = 1; i < parts.length - 1; i++) {
     if (masterDomainSet.has(parts.slice(i).join('.'))) return true;
@@ -57,7 +40,7 @@ function isMasterBlocked(domain) {
 }
 
 // ------------------------------------------------------------------
-// DNR RULES UPDATE (user-defined custom domains / keywords / pages)
+// DNR RULES UPDATE
 // ------------------------------------------------------------------
 async function updateBlockingRules() {
   try {
@@ -71,7 +54,6 @@ async function updateBlockingRules() {
     }
 
     const rules = [];
-    // Start dynamic rules from ID 10000 to prevent collisions with static rulesets
     let ruleId = 10000;
 
     const action = (() => {
@@ -86,7 +68,6 @@ async function updateBlockingRules() {
             if (!/^https?:\/\//i.test(custom)) custom = 'http://' + custom;
             return { type: 'redirect', redirect: { url: custom } };
           }
-          // Fall through to default if empty
         default:
           if (config.SHOW_GAME_INSTANTLY && config.GAMES.length > 0) {
             let index = config.ACTIVE_GAME_INDEX;
@@ -180,7 +161,7 @@ async function updateBlockingRules() {
       config.EXACT_PAGE_URLS.forEach(p => addExactPageRule(8, p));
     }
 
-    console.log(`[BlockX] Applying ${rules.length}/${DYNAMIC_RULE_LIMIT} dynamic user rules starting at ID 10000.`);
+    console.log(`[BlockX] Applying ${rules.length}/${DYNAMIC_RULE_LIMIT} dynamic rules.`);
 
     await chrome.declarativeNetRequest.updateDynamicRules({
       removeRuleIds: oldRuleIds,
@@ -210,17 +191,11 @@ chrome.runtime.onStartup.addListener(() => {
 chrome.storage.onChanged.addListener(async (changes, area) => {
   if (area === 'local') {
     const shouldUpdate = [
-      'CUSTOM_DOMAINS',
-      'CUSTOM_KEYWORDS',
-      'CUSTOM_PAGES',
-      'CUSTOM_EXACT_PAGES',
-      'CUSTOM_ALLOWED_DOMAINS',
-      'BLOCK_METHOD',
-      'ACTIVE_GAME_INDEX'
+      'CUSTOM_DOMAINS', 'CUSTOM_KEYWORDS', 'CUSTOM_PAGES',
+      'CUSTOM_EXACT_PAGES', 'CUSTOM_ALLOWED_DOMAINS', 'BLOCK_METHOD', 'ACTIVE_GAME_INDEX'
     ].some(key => changes[key] !== undefined);
 
     if (shouldUpdate) {
-      console.log('[BlockX] Storage config changed. Re-synchronizing rules...');
       await updateBlockingRules();
     }
   }
@@ -228,26 +203,30 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'getConfig') {
-    loadConfig().then(() => sendResponse({ config: CONFIG }));
+    loadConfig().then((config) => sendResponse({ config: config }));
     return true;
   }
 
   if (request.action === 'triggerBlock' && sender.tab) {
-    loadConfig().then(() => {
-      const url = new URL(sender.tab.url);
-      const targetUrl = getBlockUrl(CONFIG.BLOCK_METHOD, url.hostname);
-      chrome.tabs.update(sender.tab.id, { url: targetUrl });
-    });
+    // 🛡️ THE NATIVE IFRAME FIX: 
+    // frameId 0 means the message came from the main parent window.
+    // If an iframe tries to trigger a block on a whitelisted site, we ignore it natively here.
+    if (sender.frameId === 0) {
+      loadConfig().then((config) => {
+        const url = new URL(sender.tab.url);
+        const targetUrl = getBlockUrl(config.BLOCK_METHOD, url.hostname);
+        chrome.tabs.update(sender.tab.id, { url: targetUrl });
+      });
+    }
     return true;
   }
 
   if (request.action === 'isMasterBlocked') {
-    // Ensure domain list is loaded before answering — handles cold service worker wake-ups
     const domain = request.domain?.toLowerCase().replace(/^www\./, '');
     ensureDomainListLoaded().then(() => {
       sendResponse({ blocked: isMasterBlocked(domain) });
     });
-    return true; // keep message channel open for async reply
+    return true; 
   }
 
   return true;
@@ -257,20 +236,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // SPA NAVIGATION INTERCEPTION (webNavigation.onCommitted)
 // ------------------------------------------------------------------
 
-/**
- * Checks if the URL matches custom domains, pages, keywords, or master blocked list.
- */
 function shouldBlockUrl(urlStr, config) {
   if (!urlStr) return false;
   const urlLower = urlStr.toLowerCase();
 
-  if (
-    urlLower.startsWith('chrome-extension://') ||
-    urlLower.startsWith('chrome://') ||
-    urlLower.startsWith('about:')
-  ) return false;
+  if (urlLower.startsWith('chrome-extension://') || urlLower.startsWith('chrome://') || urlLower.startsWith('about:')) return false;
 
-  // 0. Allowed Domains (Whitelist override)
   if (config.ALLOWED_DOMAINS && config.ALLOWED_DOMAINS.length > 0) {
     try {
       const parsed = new URL(urlStr);
@@ -279,11 +250,10 @@ function shouldBlockUrl(urlStr, config) {
         const clean = d.trim().toLowerCase();
         return hostname === clean || hostname.endsWith('.' + clean);
       });
-      if (isAllowed) return false; // Bypass all blocking
+      if (isAllowed) return false; 
     } catch { /* ignore */ }
   }
 
-  // 1. Custom domains
   if (config.DOMAINS && config.DOMAINS.length > 0) {
     try {
       const parsed = new URL(urlStr);
@@ -298,7 +268,6 @@ function shouldBlockUrl(urlStr, config) {
     }
   }
 
-  // 2. Custom pages
   if (config.PAGE_URLS && config.PAGE_URLS.length > 0) {
     const pageMatch = config.PAGE_URLS.some(p => {
       const clean = p.trim().toLowerCase().replace(/^https?:\/\//i, '');
@@ -307,7 +276,6 @@ function shouldBlockUrl(urlStr, config) {
     if (pageMatch) return true;
   }
 
-  // 2.5 Custom exact pages
   if (config.EXACT_PAGE_URLS && config.EXACT_PAGE_URLS.length > 0) {
     try {
       const parsedUrl = new URL(urlStr);
@@ -326,12 +294,10 @@ function shouldBlockUrl(urlStr, config) {
     } catch { /* ignore */ }
   }
 
-  // 3. Custom keywords
   if (config.KEYWORDS && config.KEYWORDS.length > 0) {
     if (config.KEYWORDS.some(k => urlLower.includes(k.trim().toLowerCase()))) return true;
   }
 
-  // 4. Master domain list
   try {
     const hostname = new URL(urlStr).hostname.toLowerCase().replace(/^www\./, '');
     if (isMasterBlocked(hostname)) return true;
@@ -341,18 +307,12 @@ function shouldBlockUrl(urlStr, config) {
 }
 
 chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
-  if (details.frameId !== 0) return; // main frame only
+  if (details.frameId !== 0) return; 
   const url = details.url;
 
-  if (
-    url.startsWith('chrome-extension://') ||
-    url.startsWith('chrome://') ||
-    url.startsWith('about:')
-  ) return;
+  if (url.startsWith('chrome-extension://') || url.startsWith('chrome://') || url.startsWith('about:')) return;
 
-  // Ensure the domain list is ready before we evaluate — critical on service worker wake-up
   await ensureDomainListLoaded();
-
   const config = await loadConfig();
   if (config.BLOCK_METHOD === 'none') return;
 
