@@ -86,12 +86,9 @@
   }
 
   function isScanExcluded() {
-    if (!CONFIG || !CONFIG.SCAN_EXCLUDED || CONFIG.SCAN_EXCLUDED.length === 0) return false;
-    const currentHost = window.location.hostname.toLowerCase();
-    return CONFIG.SCAN_EXCLUDED.some(domain => {
-      const cleanDomain = domain.trim().toLowerCase();
-      return currentHost === cleanDomain || currentHost.endsWith('.' + cleanDomain);
-    });
+    if (!CONFIG) return false;
+    const at = window.location;
+    return matchesAnyScanExclusion(at.hostname, at.port, at.pathname, at.search, CONFIG.SCAN_EXCLUDED);
   }
 
   // --- 4. LISTEN FOR MAIN WORLD SPA BLOCKED NOTIFICATIONS & POPSTATE ---

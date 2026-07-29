@@ -550,6 +550,17 @@ function setupListManager(inputId, btnId, listId, stateKey) {
         let val = input.value.trim().toLowerCase();
         if (!val) return;
 
+        // A scan exclusion may be a whole site, one section of it, or a single
+        // page, so it is parsed rather than validated as a bare domain.
+        if (stateKey === 'CUSTOM_SCAN_EXCLUDED') {
+            const rule = parseScanExclusion(val);
+            if (!rule) {
+                showToast('Not a valid site, section or page.');
+                return;
+            }
+            val = rule.value;
+        }
+
         // The whitelist accepts any host you can actually navigate to, not just
         // registrable domains: localhost, a LAN address, a container name, an
         // IPv6 literal, each with an optional port.
@@ -563,7 +574,7 @@ function setupListManager(inputId, btnId, listId, stateKey) {
         }
 
         // Domain Sanitization & Strict Validation
-        if (stateKey === 'CUSTOM_DOMAINS' || stateKey === 'CUSTOM_SCAN_EXCLUDED') {
+        if (stateKey === 'CUSTOM_DOMAINS') {
             let cleanVal = val;
             
             // Add a temporary protocol if not present to let the URL parser handle it reliably
@@ -709,10 +720,28 @@ function buildRow(listId, stateKey, item) {
     const span = document.createElement('span');
     span.className = 'tag-label';
     span.textContent = item;
-
     el.appendChild(span);
+
+    const kind = describeEntry(stateKey, item);
+    if (kind) {
+        const badge = document.createElement('span');
+        badge.className = 'tag-kind';
+        badge.textContent = kind;
+        el.appendChild(badge);
+    }
+
     el.appendChild(buildDeleteButton(listId, stateKey, item));
     return el;
+}
+
+/**
+ * Short label saying how broadly an entry reaches, so a whole-site exclusion
+ * cannot be mistaken for a single page at a glance.
+ */
+function describeEntry(stateKey, item) {
+    if (stateKey !== 'CUSTOM_SCAN_EXCLUDED') return null;
+    const rule = parseScanExclusion(item);
+    return rule ? SCAN_EXCLUSION_LABELS[rule.kind] : null;
 }
 
 function buildPendingRow(listId, stateKey, item, pending) {

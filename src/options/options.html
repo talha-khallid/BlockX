@@ -439,11 +439,18 @@
                     <div class="settings-group">
                         <div class="group-header">
                             <h3>Scan Exclusions</h3>
-                            <p>These sites are never scanned. Adding one waits 12 minutes; removing one is instant.</p>
+                            <p>Never scanned. Adding one waits 12 minutes; removing one is instant.</p>
                         </div>
                         <div class="interactive-list-manager">
+                            <table class="help-table exclusion-forms">
+                                <tbody>
+                                    <tr><th><code>wikipedia.org</code></th><td>the whole site, subdomains included</td></tr>
+                                    <tr><th><code>reddit.com/r/science/*</code></th><td>that section and everything under it</td></tr>
+                                    <tr><th><code>reddit.com/r/science/top</code></th><td>that one page only</td></tr>
+                                </tbody>
+                            </table>
                             <div class="input-row">
-                                <input type="text" id="scan-excluded-input" placeholder="Exclude a domain (e.g. wikipedia.org)">
+                                <input type="text" id="scan-excluded-input" placeholder="Site, section/*, or a single page">
                                 <button id="add-scan-excluded-btn" class="btn btn-secondary">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                                     Add

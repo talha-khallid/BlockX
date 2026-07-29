@@ -736,12 +736,33 @@ function blockReason(urlStr, config, tabId) {
 
   if (urlLower.startsWith('chrome-extension://') || urlLower.startsWith('chrome://') || urlLower.startsWith('about:')) return null;
 
+  // A pass earned in the popup outranks every block below, but only in the one
+  // tab it was granted for and only until that tab loads the page once.
+  try {
+    const parsed = new URL(urlStr);
+    if (hasTempGrant(parsed.hostname, config.TEMP_GRANTS, tabId)) return null;
+  } catch { /* ignore */ }
+
+  // Search terms are judged BEFORE the whitelist, which is the whole point.
+  // Allowing google.com is how you keep mail, drive and ordinary searching;
+  // it is not permission to use Google to look for this. Checked with word
+  // boundaries so "analysis" and "scunthorpe" pass and "porn" does not.
+  const query = extractSearchQuery(urlStr);
+  if (query) {
+    const filter = getSearchFilter(config.KEYWORDS);
+    if (filter) {
+      filter.lastIndex = 0;
+      if (filter.test(query)) {
+        console.log(`[BlockX] Blocked search: ${JSON.stringify(query)}`);
+        return 'search';
+      }
+    }
+  }
+
+  // Everything from here down can be waived by an allowed destination.
   try {
     const parsed = new URL(urlStr);
     if (matchesAnyHostEntry(parsed.hostname, parsed.port, config.ALLOWED_DOMAINS)) return null;
-    // A pass earned in the popup outranks every block below, but only in the
-    // one tab it was granted for and only until that tab loads the page once.
-    if (hasTempGrant(parsed.hostname, config.TEMP_GRANTS, tabId)) return null;
   } catch { /* ignore */ }
 
   if (config.DOMAINS && config.DOMAINS.length > 0) {
@@ -786,20 +807,6 @@ function blockReason(urlStr, config, tabId) {
 
   if (config.KEYWORDS && config.KEYWORDS.length > 0) {
     if (config.KEYWORDS.some(k => urlLower.includes(k.trim().toLowerCase()))) return 'keyword';
-  }
-
-  // Search terms, checked with word boundaries so "porn" fires but "analysis"
-  // does not. This catches any engine, any parameter order, any encoding.
-  const query = extractSearchQuery(urlStr);
-  if (query) {
-    const filter = getSearchFilter(config.KEYWORDS);
-    if (filter) {
-      filter.lastIndex = 0;
-      if (filter.test(query)) {
-        console.log(`[BlockX] Blocked search: ${JSON.stringify(query)}`);
-        return 'search';
-      }
-    }
   }
 
   try {

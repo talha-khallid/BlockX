@@ -338,6 +338,105 @@ function matchesAnyHostEntry(hostname, port, entries) {
 }
 
 // ------------------------------------------------------------------
+// SCAN EXCLUSIONS
+// ------------------------------------------------------------------
+// An exclusion can name a whole site, one branch of it, or a single page.
+// The three are told apart by what is written:
+//
+//   example.com                a whole site, subdomains included
+//   example.com/docs/*         that section and everything under it
+//   example.com/docs/intro     that one page only
+//
+// A section or page pins the host exactly. Only a whole-site rule reaches
+// subdomains, because an exclusion weakens protection and should not spread
+// further than it looks like it does.
+
+const SCAN_EXCLUSION_LABELS = {
+  site: 'Whole site',
+  section: 'Section',
+  page: 'Single page'
+};
+
+function parseScanExclusion(raw) {
+  if (typeof raw !== 'string') return null;
+
+  let text = raw.trim().toLowerCase();
+  if (!text) return null;
+
+  text = text.replace(/^[a-z][a-z0-9+.-]*:\/\//, '');   // scheme
+  text = text.replace(/^[^@/]*@/, '');                  // credentials
+  text = text.split('#')[0];                            // fragment
+  if (!text) return null;
+
+  // An exclusion has to name a host. Without this a bare path slips through:
+  // the URL parser tolerates the extra slashes in "http:///just/a/path" and
+  // reads "just" as the hostname.
+  if (/^[/?]/.test(text)) return null;
+
+  const wildcard = /\/\*$|(?:^|[^*])\*$/.test(text);
+  if (wildcard) text = text.replace(/\/?\*+$/, '');
+  if (!text) return null;
+
+  let parsed;
+  try {
+    parsed = new URL('http://' + text);
+  } catch {
+    return null;
+  }
+
+  const host = normaliseHostEntry(parsed.host);
+  if (!host) return null;
+
+  const path = (parsed.pathname || '/').replace(/\/+$/, '');
+  const query = parsed.search || '';
+
+  if (!path && !query) {
+    return { kind: 'site', host: host.host, port: host.port, path: '/', query: '', value: host.value };
+  }
+
+  const kind = wildcard ? 'section' : 'page';
+  return {
+    kind,
+    host: host.host,
+    port: host.port,
+    path: path || '/',
+    query,
+    value: `${host.value}${path}${query}${wildcard ? '/*' : ''}`
+  };
+}
+
+function scanExclusionMatches(hostname, port, pathname, search, entry) {
+  const rule = (entry && typeof entry === 'object') ? entry : parseScanExclusion(entry);
+  if (!rule) return false;
+
+  if (rule.port && String(port || '') !== rule.port) return false;
+
+  const host = String(hostname || '').toLowerCase().replace(/^www\./, '');
+  if (!host) return false;
+
+  if (rule.kind === 'site') {
+    if (host === rule.host) return true;
+    return classifyHost(rule.host) === 'domain' && host.endsWith('.' + rule.host);
+  }
+
+  if (host !== rule.host) return false;
+
+  const path = (String(pathname || '/')).replace(/\/+$/, '') || '/';
+
+  if (rule.kind === 'section') {
+    return path === rule.path || path.startsWith(rule.path.replace(/\/$/, '') + '/');
+  }
+
+  if (path !== rule.path) return false;
+  return !rule.query || String(search || '') === rule.query;
+}
+
+function matchesAnyScanExclusion(hostname, port, pathname, search, entries) {
+  if (!Array.isArray(entries) || entries.length === 0) return false;
+  return entries.some(e => scanExclusionMatches(hostname, port, pathname, search, e));
+}
+
+// ------------------------------------------------------------------
 // TEMPORARY PASSES
 // ------------------------------------------------------------------
 // Earned by retyping the unlock phrase in the popup. Deliberately short —
