@@ -248,7 +248,7 @@ function requestChange(listId, stateKey, item, op) {
             }
             await refreshPendingState();
             renderList(listId, stateKey);
-            showToast(`Scheduled. Keep this tab open for ${formatCountdown(REMOVAL_DELAY_MS)}.`);
+            showToast(`Scheduled. Keep this tab open for ${formatCountdown(delayFor(stateKey, op))}.`);
         }
     );
     return true;
@@ -661,6 +661,26 @@ function setupListManager(inputId, btnId, listId, stateKey) {
             saveState();
         };
 
+        // Exempting a blocked site from scanning makes no sense and reads like
+        // a loophole, so it is refused the same way the whitelist is.
+        if (stateKey === 'CUSTOM_SCAN_EXCLUDED') {
+            const rule = parseScanExclusion(val);
+            const host = rule ? rule.host : val;
+
+            if (matchesAnyHostEntry(host, rule && rule.port, state.CUSTOM_DOMAINS)) {
+                showToast('That site is on your restricted list. It is already blocked.');
+                return;
+            }
+            chrome.runtime.sendMessage({ action: 'isMasterBlocked', domain: host }, (response) => {
+                if (response && response.blocked) {
+                    showToast('That site is blocked by the built-in list.');
+                } else {
+                    finalizeAdd(val);
+                }
+            });
+            return;
+        }
+
         if (stateKey === 'CUSTOM_ALLOWED_DOMAINS') {
             if (state.CUSTOM_DOMAINS.includes(val)) {
                 showToast("Cannot whitelist a domain that is in your custom blocklist.");
@@ -761,7 +781,7 @@ function buildDeleteButton(listId, stateKey, item) {
     const deleteBtn = document.createElement('div');
     deleteBtn.className = 'tag-delete';
     deleteBtn.title = DELAYED_REMOVAL_LISTS.includes(stateKey)
-        ? `Schedule removal (${formatCountdown(REMOVAL_DELAY_MS)} cooling-off)`
+        ? `Schedule removal (${formatCountdown(delayFor(stateKey, 'remove'))} cooling-off)`
         : 'Remove';
 
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

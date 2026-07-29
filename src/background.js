@@ -119,7 +119,7 @@ async function schedulePendingChange(listKey, value, op, tabId) {
     op: direction,
     tabId,
     scheduledAt: now,
-    expiresAt: now + REMOVAL_DELAY_MS
+    expiresAt: now + delayFor(listKey, direction)
   };
 
   pending.push(record);

@@ -58,6 +58,11 @@ let CONFIG = {
 // only lands if the dashboard tab that asked for it stays open the whole time.
 const REMOVAL_DELAY_MS = 12 * 60 * 1000;
 
+// Exempting something from scanning gives up less than dropping it from a
+// blocklist, so it is a shorter wait — long enough to be a decision, not so
+// long that narrowing a false positive is a chore.
+const SCAN_EXCLUSION_DELAY_MS = 4 * 60 * 1000;
+
 // Taking an entry OFF one of these lists weakens protection, so it waits.
 const DELAYED_REMOVAL_LISTS = [
   'CUSTOM_DOMAINS',
@@ -76,6 +81,15 @@ function isDelayed(listKey, op) {
   return op === 'add'
     ? DELAYED_ADDITION_LISTS.includes(listKey)
     : DELAYED_REMOVAL_LISTS.includes(listKey);
+}
+
+/**
+ * How long a given change has to wait. Every caller asks rather than assuming,
+ * so the wait shown in the dashboard is always the wait actually served.
+ */
+function delayFor(listKey, op) {
+  if (op === 'add' && listKey === 'CUSTOM_SCAN_EXCLUDED') return SCAN_EXCLUSION_DELAY_MS;
+  return REMOVAL_DELAY_MS;
 }
 
 const PENDING_ALARM_PREFIX = 'blockx-pending-change:';
