@@ -3,6 +3,7 @@
 const sections = {
     general: { title: "General Settings", subtitle: "Configure your core protection parameters." },
     lists: { title: "Domain Management", subtitle: "Manage the database of restricted hostnames." },
+    whitelist: { title: "Whitelist", subtitle: "Destinations that bypass every rule." },
     keywords: { title: "Content Filtering", subtitle: "Define patterns to block based on page content." },
     pages: { title: "Page Link Restriction", subtitle: "Filter traffic to specific URLs and paths." },
     scanning: { title: "Content Scanning", subtitle: "Catch explicit pages on sites that are not on any list." },

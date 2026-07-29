@@ -433,6 +433,15 @@ input:checked + .hub-item-box .icon { color: var(--accent-dark); }
 
 .tag-label { min-width: 0; overflow-wrap: anywhere; }
 
+.help-text code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--border-light);
+    color: var(--text-primary);
+}
+
 .scan-message {
     width: 100%;
     font-family: inherit;

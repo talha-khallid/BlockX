@@ -29,6 +29,10 @@
                     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
                     <span>Domains</span>
                 </a>
+                <a href="#" class="nav-link" data-section="whitelist">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"></path><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                    <span>Whitelist</span>
+                </a>
                 <a href="#" class="nav-link" data-section="keywords">
                     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"></path><path d="M7 7h.01"></path></svg>
                     <span>Keywords</span>
@@ -260,16 +264,26 @@
                             </div>
                         </div>
 
-                        <div class="interactive-list-manager" style="margin-top: 24px;">
-                            <h4>Allowed Domains (Whitelist)</h4>
-                            <p class="help-text" style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 12px;">Traffic to these hostnames will BYPASS all blocking rules.</p>
+                    </div>
+                </div>
+
+                <!-- Whitelist Section -->
+                <div id="section-whitelist" class="settings-section">
+                    <div class="settings-group">
+                        <div class="group-header">
+                            <h3>Allowed Destinations</h3>
+                            <p>Traffic to these bypasses every blocking rule and is never scanned.</p>
+                        </div>
+
+                        <div class="interactive-list-manager">
                             <div class="input-row">
-                                <input type="text" id="allowed-domain-input" placeholder="Add domain to allow (e.g. youtube.com)">
+                                <input type="text" id="allowed-domain-input" placeholder="Domain, IP address, or hostname (e.g. localhost:3000)">
                                 <button id="add-allowed-domain-btn" class="btn btn-secondary">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                                     Add
                                 </button>
                             </div>
+                            <p class="help-text">Accepts domains, IPv4 and IPv6 addresses, <code>localhost</code>, <code>*.local</code> and other single-label hosts, with an optional port.</p>
                             <div id="allowed-domain-list" class="tag-cloud">
                                 <!-- Populated by JS -->
                             </div>
