@@ -30,6 +30,37 @@
             </header>
 
             <main class="popup-content">
+                <!-- One-time visit unlock, shown only on a blocked destination -->
+                <div id="unlock-panel" class="unlock-panel hidden">
+                    <div class="unlock-head">
+                        <span class="unlock-title">Blocked</span>
+                        <span id="unlock-host" class="unlock-host"></span>
+                    </div>
+
+                    <p id="unlock-phrase" class="unlock-phrase"></p>
+
+                    <textarea id="unlock-input" class="unlock-input" rows="2" spellcheck="false"
+                        autocomplete="off" autocapitalize="off" autocorrect="off"
+                        placeholder="Type the message above, exactly"></textarea>
+
+                    <div id="unlock-error" class="unlock-error hidden">That does not match. Type it exactly.</div>
+
+                    <button id="unlock-btn" class="btn btn-primary" disabled>
+                        <span id="unlock-btn-label">Let me through once</span>
+                    </button>
+                    <p id="unlock-note" class="help-text"></p>
+                </div>
+
+                <!-- Active pass -->
+                <div id="pass-panel" class="pass-panel hidden">
+                    <div class="pass-head">
+                        <span class="pass-dot"></span>
+                        <span class="pass-title">Temporary pass active</span>
+                    </div>
+                    <p id="pass-detail" class="pass-detail"></p>
+                    <button id="pass-end-btn" class="btn btn-ghost" type="button">End it now</button>
+                </div>
+
                 <!-- Context Action -->
                 <div id="context-action" class="context-card">
                     <div class="card-body">

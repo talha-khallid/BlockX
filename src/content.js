@@ -63,7 +63,9 @@
 
   function isWhitelisted() {
     if (!CONFIG) return false;
-    return matchesAnyHostEntry(window.location.hostname, window.location.port, CONFIG.ALLOWED_DOMAINS);
+    if (matchesAnyHostEntry(window.location.hostname, window.location.port, CONFIG.ALLOWED_DOMAINS)) return true;
+    // A pass earned in the popup suspends everything for a few minutes.
+    return hasTempGrant(window.location.hostname, CONFIG.TEMP_GRANTS);
   }
 
   // If the site is whitelisted, drop the barrier and shut down completely.
@@ -183,6 +185,7 @@
     // Scoped to <head> on purpose: querying the whole document would walk the
     // entire body before the text pass even starts.
     if (countFlaggedTerms(document.title, found, threshold)) return found;
+    if (countFlaggedTerms(extractSearchQuery(window.location.href), found, threshold)) return found;
     if (document.head) {
       for (const meta of document.head.querySelectorAll('meta[name="description"], meta[name="keywords"], meta[property^="og:"]')) {
         if (countFlaggedTerms(meta.getAttribute('content'), found, threshold)) return found;

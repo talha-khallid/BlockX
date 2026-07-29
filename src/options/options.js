@@ -35,6 +35,7 @@ let state = {
     CUSTOM_SCAN_EXCLUDED: [],
     SCAN_MESSAGE: '',
     SCAN_SENSITIVITY: 2,
+    UNLOCK_PHRASE: '',
     ACTIVE_GAME_INDEX: -1,
     SECURITY_ENABLED: false,
     PASSWORD: '',
@@ -127,6 +128,32 @@ function setupScanSettings() {
             saveBtn.addEventListener('click', () => {
                 saveMessage();
                 showToast('Warning message saved.');
+            });
+        }
+    }
+
+    const phraseInput = document.getElementById('unlock-phrase');
+    const phraseBtn = document.getElementById('save-unlock-phrase-btn');
+    if (phraseInput) {
+        phraseInput.value = state.UNLOCK_PHRASE || '';
+
+        const savePhrase = () => {
+            const value = phraseInput.value.trim();
+            if (!value) {
+                showToast('The phrase cannot be empty.');
+                phraseInput.value = state.UNLOCK_PHRASE || '';
+                return;
+            }
+            if (value === (state.UNLOCK_PHRASE || '')) return;
+            state.UNLOCK_PHRASE = value;
+            saveState();
+        };
+
+        phraseInput.addEventListener('blur', savePhrase);
+        if (phraseBtn) {
+            phraseBtn.addEventListener('click', () => {
+                savePhrase();
+                showToast('Unlock phrase saved.');
             });
         }
     }
@@ -454,6 +481,7 @@ function saveState() {
         CUSTOM_SCAN_EXCLUDED: state.CUSTOM_SCAN_EXCLUDED,
         SCAN_MESSAGE: state.SCAN_MESSAGE,
         SCAN_SENSITIVITY: state.SCAN_SENSITIVITY,
+        UNLOCK_PHRASE: state.UNLOCK_PHRASE,
         ACTIVE_GAME_INDEX: state.ACTIVE_GAME_INDEX,
         SECURITY_ENABLED: state.SECURITY_ENABLED,
         PASSWORD: state.PASSWORD,
@@ -826,6 +854,7 @@ async function restore_options() {
             CUSTOM_SCAN_EXCLUDED: [],
             SCAN_MESSAGE: CONFIG.SCAN_MESSAGE,
             SCAN_SENSITIVITY: 2,
+            UNLOCK_PHRASE: CONFIG.UNLOCK_PHRASE,
             ACTIVE_GAME_INDEX: -1,
             SECURITY_ENABLED: false,
             PASSWORD: '',
@@ -884,6 +913,7 @@ function exportSettings() {
         "CUSTOM_SCAN_EXCLUDED",
         "SCAN_MESSAGE",
         "SCAN_SENSITIVITY",
+        "UNLOCK_PHRASE",
         "ACTIVE_GAME_INDEX",
         "SECURITY_ENABLED",
         "PASSWORD",
@@ -939,6 +969,7 @@ function handleImport(event) {
                 CUSTOM_SCAN_EXCLUDED: Array.isArray(imported.CUSTOM_SCAN_EXCLUDED) ? imported.CUSTOM_SCAN_EXCLUDED : [],
                 SCAN_MESSAGE: typeof imported.SCAN_MESSAGE === 'string' ? imported.SCAN_MESSAGE : CONFIG.SCAN_MESSAGE,
                 SCAN_SENSITIVITY: typeof imported.SCAN_SENSITIVITY === 'number' ? imported.SCAN_SENSITIVITY : 2,
+                UNLOCK_PHRASE: (typeof imported.UNLOCK_PHRASE === 'string' && imported.UNLOCK_PHRASE.trim()) ? imported.UNLOCK_PHRASE : CONFIG.UNLOCK_PHRASE,
                 ACTIVE_GAME_INDEX: typeof imported.ACTIVE_GAME_INDEX === 'number' ? imported.ACTIVE_GAME_INDEX : -1,
                 SECURITY_ENABLED: !!imported.SECURITY_ENABLED,
                 PASSWORD: imported.PASSWORD || "",

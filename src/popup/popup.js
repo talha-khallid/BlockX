@@ -3,10 +3,143 @@
 let currentTab = null;
 let currentContext = { type: 'domain', value: '' };
 
+let unlockContext = null;
+
 async function init() {
     await loadConfig();
     await detectContext();
     setupListeners();
+    await setupUnlock();
+}
+
+// ------------------------------------------------------------------
+// ONE-TIME VISIT
+// ------------------------------------------------------------------
+
+function sendMessage(payload) {
+    return new Promise((resolve) => chrome.runtime.sendMessage(payload, resolve));
+}
+
+/**
+ * The tab may be sitting on the block page or a game by now, so the host to
+ * unlock comes from what the service worker recorded for this tab. Falling
+ * back to the tab's own host covers a page the content script stopped.
+ */
+function resolveUnlockTarget(context) {
+    if (!currentTab || !currentTab.url) return null;
+
+    const isOurPage = currentTab.url.startsWith(chrome.runtime.getURL(''));
+    if (isOurPage) return context.blocked || null;
+
+    try {
+        const url = new URL(currentTab.url);
+        if (!/^https?:$/.test(url.protocol)) return null;
+        return { host: url.hostname, url: currentTab.url };
+    } catch {
+        return null;
+    }
+}
+
+async function setupUnlock() {
+    if (!currentTab) return;
+
+    const context = await sendMessage({ action: 'getUnlockContext', tabId: currentTab.id });
+    if (!context) return;
+    unlockContext = context;
+
+    const target = resolveUnlockTarget(context);
+    const active = (context.grants || []).find(g => target && g.host === target.host.replace(/^www\./, ''));
+
+    if (active) {
+        showActivePass(active, target);
+        return;
+    }
+
+    // Only offer this where something is actually blocked.
+    const onOurPage = currentTab.url && currentTab.url.startsWith(chrome.runtime.getURL(''));
+    if (!onOurPage || !target) return;
+
+    showUnlockPanel(context, target);
+}
+
+function showUnlockPanel(context, target) {
+    const panel = document.getElementById('unlock-panel');
+    const hostEl = document.getElementById('unlock-host');
+    const phraseEl = document.getElementById('unlock-phrase');
+    const input = document.getElementById('unlock-input');
+    const button = document.getElementById('unlock-btn');
+    const errorEl = document.getElementById('unlock-error');
+    const note = document.getElementById('unlock-note');
+    if (!panel || !input || !button) return;
+
+    const phrase = (context.phrase || '').trim();
+    if (!phrase) return;
+
+    panel.classList.remove('hidden');
+    document.getElementById('context-action')?.classList.add('hidden');
+
+    if (hostEl) hostEl.textContent = target.host;
+    if (phraseEl) phraseEl.textContent = phrase;
+    if (note) {
+        note.textContent = `Grants ${Math.round(context.durationMs / 60000)} minutes on ${target.host}, then it closes again.`;
+    }
+
+    const collapse = (text) => text.trim().replace(/\s+/g, ' ');
+
+    input.addEventListener('input', () => {
+        errorEl?.classList.add('hidden');
+        button.disabled = collapse(input.value) !== collapse(phrase);
+    });
+
+    button.addEventListener('click', async () => {
+        button.disabled = true;
+        const response = await sendMessage({
+            action: 'grantTempPass',
+            host: target.host,
+            typed: input.value
+        });
+
+        if (!response || !response.ok) {
+            errorEl?.classList.remove('hidden');
+            button.disabled = false;
+            return;
+        }
+
+        // Send the tab back to what it was trying to reach.
+        if (target.url) chrome.tabs.update(currentTab.id, { url: target.url });
+        window.close();
+    });
+
+    input.focus();
+}
+
+function showActivePass(grant, target) {
+    const panel = document.getElementById('pass-panel');
+    const detail = document.getElementById('pass-detail');
+    const endBtn = document.getElementById('pass-end-btn');
+    if (!panel) return;
+
+    panel.classList.remove('hidden');
+
+    const render = () => {
+        const left = grant.expiresAt - Date.now();
+        if (left <= 0) {
+            panel.classList.add('hidden');
+            return;
+        }
+        if (detail) detail.textContent = `${grant.host} — ${formatCountdown(left)} remaining`;
+    };
+    render();
+    setInterval(render, 1000);
+
+    if (endBtn) {
+        endBtn.addEventListener('click', async () => {
+            await sendMessage({ action: 'revokeTempPass', host: grant.host });
+            panel.classList.add('hidden');
+            if (currentTab) chrome.tabs.reload(currentTab.id);
+            window.close();
+        });
+    }
 }
 
 /**

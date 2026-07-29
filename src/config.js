@@ -39,6 +39,12 @@ let CONFIG = {
   // How many DISTINCT flagged terms a page needs before the warning appears
   SCAN_SENSITIVITY: 2,
 
+  // Phrase that must be retyped to earn a temporary pass to a blocked site
+  UNLOCK_PHRASE: 'I am choosing to break my own rule',
+
+  // Temporary passes earned through the popup
+  TEMP_GRANTS: [],
+
   GAMES: [
     { name: "Tower Blocks", path: "assets/blocked-pages/tower-blocks.html" },
     { name: "Rubiks Cube", path: "assets/blocked-pages/rubiks-cube.html" },
@@ -86,6 +92,7 @@ const IMPORTABLE_KEYS = [
   'CUSTOM_SCAN_EXCLUDED',
   'SCAN_MESSAGE',
   'SCAN_SENSITIVITY',
+  'UNLOCK_PHRASE',
   'ACTIVE_GAME_INDEX',
   'SECURITY_ENABLED',
   'PASSWORD',
@@ -200,6 +207,8 @@ async function loadConfig() {
       CUSTOM_SCAN_EXCLUDED: [],
       SCAN_MESSAGE: CONFIG.SCAN_MESSAGE,
       SCAN_SENSITIVITY: 2,
+      UNLOCK_PHRASE: CONFIG.UNLOCK_PHRASE,
+      TEMP_GRANTS: [],
       THEME: 'system',
       ACTIVE_GAME_INDEX: -1
     }, (items) => {
@@ -213,6 +222,8 @@ async function loadConfig() {
       CONFIG.SCAN_EXCLUDED = items.CUSTOM_SCAN_EXCLUDED;
       CONFIG.SCAN_MESSAGE = items.SCAN_MESSAGE;
       CONFIG.SCAN_SENSITIVITY = items.SCAN_SENSITIVITY;
+      CONFIG.UNLOCK_PHRASE = items.UNLOCK_PHRASE;
+      CONFIG.TEMP_GRANTS = items.TEMP_GRANTS;
       CONFIG.THEME = items.THEME;
       CONFIG.ACTIVE_GAME_INDEX = items.ACTIVE_GAME_INDEX;
       resolve(CONFIG);
@@ -324,6 +335,95 @@ function hostMatchesEntry(hostname, port, entry) {
 function matchesAnyHostEntry(hostname, port, entries) {
   if (!Array.isArray(entries) || entries.length === 0) return false;
   return entries.some(entry => hostMatchesEntry(hostname, port, entry));
+}
+
+// ------------------------------------------------------------------
+// TEMPORARY PASSES
+// ------------------------------------------------------------------
+// Earned by retyping the unlock phrase in the popup. Deliberately short —
+// long enough to do the thing you meant to do, not long enough to settle in.
+const TEMP_GRANT_MS = 5 * 60 * 1000;
+const TEMP_GRANT_ALARM = 'blockx-grant-expiry';
+
+function activeGrants(grants) {
+  if (!Array.isArray(grants)) return [];
+  const now = Date.now();
+  return grants.filter(g => g && typeof g.host === 'string' && g.expiresAt > now);
+}
+
+function hasTempGrant(hostname, grants) {
+  const host = String(hostname || '').toLowerCase().replace(/^www\./, '');
+  if (!host) return false;
+  return activeGrants(grants).some(g => {
+    const granted = g.host.toLowerCase().replace(/^www\./, '');
+    return host === granted || host.endsWith('.' + granted);
+  });
+}
+
+// ------------------------------------------------------------------
+// SEARCH QUERIES
+// ------------------------------------------------------------------
+// A blocklist entry like "google.com/search?q=porn" only matches when the
+// query happens to be the first parameter and is exactly that word. Real
+// searches put the terms anywhere, url-encode them, and mix them with other
+// words, so the query is pulled out and checked on its own.
+const SEARCH_QUERY_PARAMS = {
+  'google.': ['q'],
+  'bing.com': ['q'],
+  'duckduckgo.com': ['q'],
+  'search.yahoo.': ['p'],
+  'yandex.': ['text'],
+  'search.brave.com': ['q'],
+  'ecosia.org': ['q'],
+  'startpage.com': ['q', 'query'],
+  'searx': ['q'],
+  'mojeek.com': ['q'],
+  'youtube.com': ['search_query', 'q'],
+  'reddit.com': ['q'],
+  'x.com': ['q'],
+  'twitter.com': ['q'],
+  'pinterest.': ['q'],
+  'tumblr.com': ['q'],
+  'vimeo.com': ['q'],
+  'dailymotion.com': ['search']
+};
+
+/**
+ * Returns the human-readable search terms for a URL, or '' when it is not a
+ * recognised search. Separators become spaces so word boundaries still apply.
+ */
+function extractSearchQuery(urlStr) {
+  let parsed;
+  try {
+    parsed = new URL(urlStr);
+  } catch {
+    return '';
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  const params = [];
+  for (const [needle, keys] of Object.entries(SEARCH_QUERY_PARAMS)) {
+    if (host.includes(needle)) params.push(...keys);
+  }
+  // Unknown host: still worth checking the usual suspects on any /search path.
+  if (params.length === 0 && /(^|\/)(search|results|find)(\/|$)/.test(parsed.pathname)) {
+    params.push('q', 'query', 'search', 'p', 'term', 'keyword');
+  }
+  if (params.length === 0) return '';
+
+  const found = [];
+  for (const key of new Set(params)) {
+    const value = parsed.searchParams.get(key);
+    if (value) found.push(value);
+  }
+
+  // Some sites carry the terms in the path, e.g. /search/free+porn
+  const pathMatch = parsed.pathname.match(/\/(?:search|results|tag|tags|q)\/([^/]+)/i);
+  if (pathMatch) {
+    try { found.push(decodeURIComponent(pathMatch[1])); } catch { found.push(pathMatch[1]); }
+  }
+
+  return found.join(' ').replace(/[+_\-.]+/g, ' ').trim();
 }
 
 // ------------------------------------------------------------------
