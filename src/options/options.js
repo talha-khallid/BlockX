@@ -8,6 +8,17 @@ const sections = {
     security: { title: "Security Protection", subtitle: "Secure your configuration with a dashboard password." }
 };
 
+const LIST_BINDINGS = [
+    { inputId: 'domain-input', btnId: 'add-domain-btn', listId: 'domain-list', stateKey: 'CUSTOM_DOMAINS' },
+    { inputId: 'keyword-input', btnId: 'add-keyword-btn', listId: 'keyword-list', stateKey: 'CUSTOM_KEYWORDS' },
+    { inputId: 'page-input', btnId: 'add-page-btn', listId: 'page-list', stateKey: 'CUSTOM_PAGES' },
+    { inputId: 'exact-page-input', btnId: 'add-exact-page-btn', listId: 'exact-page-list', stateKey: 'CUSTOM_EXACT_PAGES' },
+    { inputId: 'allowed-domain-input', btnId: 'add-allowed-domain-btn', listId: 'allowed-domain-list', stateKey: 'CUSTOM_ALLOWED_DOMAINS' }
+];
+
+let pendingRemovals = [];
+let countdownTimer = null;
+
 let state = {
     BLOCK_METHOD: 'blocked_page',
     CUSTOM_REDIRECT_URL: '',
@@ -43,12 +54,8 @@ async function init() {
     
     // 3. Populate dynamic elements
     populateGames();
-    setupListManager('domain-input', 'add-domain-btn', 'domain-list', 'CUSTOM_DOMAINS');
-    setupListManager('keyword-input', 'add-keyword-btn', 'keyword-list', 'CUSTOM_KEYWORDS');
-    setupListManager('page-input', 'add-page-btn', 'page-list', 'CUSTOM_PAGES');
-    setupListManager('exact-page-input', 'add-exact-page-btn', 'exact-page-list', 'CUSTOM_EXACT_PAGES');
-    setupListManager('allowed-domain-input', 'add-allowed-domain-btn', 'allowed-domain-list', 'CUSTOM_ALLOWED_DOMAINS');
-    
+    LIST_BINDINGS.forEach(b => setupListManager(b.inputId, b.btnId, b.listId, b.stateKey));
+
     const customUrlInput = document.getElementById('custom-redirect-input');
     const customUrlBtn = document.getElementById('save-custom-url-btn');
     if (customUrlBtn && customUrlInput) {
@@ -67,17 +74,124 @@ async function init() {
         });
     }
 
-    renderList('domain-list', 'CUSTOM_DOMAINS');
-    renderList('keyword-list', 'CUSTOM_KEYWORDS');
-    renderList('page-list', 'CUSTOM_PAGES');
-    renderList('exact-page-list', 'CUSTOM_EXACT_PAGES');
-    renderList('allowed-domain-list', 'CUSTOM_ALLOWED_DOMAINS');
+    // 4. Load scheduled removals and start their countdowns
+    await refreshPendingRemovals();
+    renderAllLists();
+    startCountdownTicker();
+    watchExternalChanges();
+    warnBeforeLeaving();
 
-    // 4. Prevention: Tamper-proof the gateway
+    // 5. Prevention: Tamper-proof the gateway
     monitorGatewayTampering();
 
-    // 5. Setup Import/Export Listeners
+    // 6. Setup Import/Export Listeners
     setupBackupListeners();
+}
+
+// ------------------------------------------------------------------
+// DELAYED REMOVAL
+// ------------------------------------------------------------------
+
+function renderAllLists() {
+    LIST_BINDINGS.forEach(b => renderList(b.listId, b.stateKey));
+}
+
+function pendingFor(stateKey, value) {
+    return pendingRemovals.find(p => p.listKey === stateKey && p.value === value) || null;
+}
+
+function refreshPendingRemovals() {
+    return new Promise((resolve) => {
+        chrome.runtime.sendMessage({ action: 'getPendingRemovals' }, (response) => {
+            pendingRemovals = (response && response.pending) || [];
+            resolve();
+        });
+    });
+}
+
+/**
+ * Blocklist entries go through a cooling-off period before they actually leave
+ * the list. Whitelist entries are removed straight away — that only ever
+ * tightens protection.
+ */
+function requestRemoval(listId, stateKey, item) {
+    if (!DELAYED_REMOVAL_LISTS.includes(stateKey)) {
+        const index = state[stateKey].indexOf(item);
+        if (index === -1) return;
+        state[stateKey].splice(index, 1);
+        renderList(listId, stateKey);
+        saveState();
+        return;
+    }
+
+    chrome.runtime.sendMessage(
+        { action: 'schedulePendingRemoval', listKey: stateKey, value: item },
+        async (response) => {
+            if (!response || !response.record) {
+                showToast('Could not schedule that removal.');
+                return;
+            }
+            await refreshPendingRemovals();
+            renderList(listId, stateKey);
+            showToast(`Removal scheduled. Keep this tab open for ${formatCountdown(REMOVAL_DELAY_MS)}.`);
+        }
+    );
+}
+
+function cancelRemoval(listId, stateKey, id) {
+    chrome.runtime.sendMessage({ action: 'cancelPendingRemoval', id }, async () => {
+        await refreshPendingRemovals();
+        renderList(listId, stateKey);
+        showToast('Removal cancelled — the entry stays blocked.');
+    });
+}
+
+function startCountdownTicker() {
+    if (countdownTimer) clearInterval(countdownTimer);
+    countdownTimer = setInterval(() => {
+        if (pendingRemovals.length === 0) return;
+        document.querySelectorAll('.pending-timer').forEach(el => {
+            const expiresAt = parseInt(el.getAttribute('data-expires-at'), 10);
+            const remaining = expiresAt - Date.now();
+            const text = remaining > 0 ? formatCountdown(remaining) : 'removing…';
+            // Only touch the DOM on a real change — the gateway's tamper observer
+            // watches this subtree.
+            if (el.textContent !== text) el.textContent = text;
+        });
+    }, 1000);
+}
+
+/**
+ * The service worker applies removals directly to storage, so mirror any change
+ * it makes back into the dashboard.
+ */
+function watchExternalChanges() {
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'local') return;
+        let dirty = false;
+
+        LIST_BINDINGS.forEach(({ stateKey }) => {
+            if (changes[stateKey]) {
+                state[stateKey] = changes[stateKey].newValue || [];
+                dirty = true;
+            }
+        });
+
+        if (changes.PENDING_REMOVALS) {
+            pendingRemovals = changes.PENDING_REMOVALS.newValue || [];
+            dirty = true;
+        }
+
+        if (dirty) renderAllLists();
+    });
+}
+
+function warnBeforeLeaving() {
+    window.addEventListener('beforeunload', (e) => {
+        if (pendingRemovals.length === 0) return;
+        e.preventDefault();
+        e.returnValue = '';
+    });
 }
 
 /**
@@ -353,7 +467,17 @@ function setupListManager(inputId, btnId, listId, stateKey) {
         }
         
         const finalizeAdd = (finalVal) => {
-            if (finalVal && !state[stateKey].includes(finalVal)) {
+            if (!finalVal) return;
+
+            // Re-adding an entry that is counting down just calls the removal off.
+            const pending = pendingFor(stateKey, finalVal);
+            if (pending) {
+                input.value = '';
+                cancelRemoval(listId, stateKey, pending.id);
+                return;
+            }
+
+            if (!state[stateKey].includes(finalVal)) {
                 state[stateKey].push(finalVal);
                 renderList(listId, stateKey);
                 input.value = '';
@@ -396,53 +520,80 @@ function renderList(listId, stateKey) {
     const container = document.getElementById(listId);
     if (!container) return;
     container.innerHTML = '';
-    
-    state[stateKey].forEach((item, index) => {
+
+    state[stateKey].forEach((item) => {
+        const pending = pendingFor(stateKey, item);
+
         const el = document.createElement('div');
-        el.className = 'tag-item';
-        
+        el.className = pending ? 'tag-item pending' : 'tag-item';
+
         const span = document.createElement('span');
+        span.className = 'tag-label';
         span.textContent = item;
         el.appendChild(span);
 
-        const deleteBtn = document.createElement('div');
-        deleteBtn.className = 'tag-delete';
-        deleteBtn.setAttribute('data-key', stateKey);
-        deleteBtn.setAttribute('data-index', index);
-        
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.setAttribute('viewBox', '0 0 24 24');
-        svg.setAttribute('fill', 'none');
-        svg.setAttribute('stroke', 'currentColor');
-        svg.setAttribute('stroke-width', '2.5');
-        svg.setAttribute('stroke-linecap', 'round');
-        svg.setAttribute('stroke-linejoin', 'round');
-        
-        const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line1.setAttribute('x1', '18'); line1.setAttribute('y1', '6');
-        line1.setAttribute('x2', '6'); line1.setAttribute('y2', '18');
-        
-        const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line2.setAttribute('x1', '6'); line2.setAttribute('y1', '6');
-        line2.setAttribute('x2', '18'); line2.setAttribute('y2', '18');
-        
-        svg.appendChild(line1);
-        svg.appendChild(line2);
-        deleteBtn.appendChild(svg);
-        el.appendChild(deleteBtn);
-        
+        el.appendChild(pending
+            ? buildPendingControls(listId, stateKey, pending)
+            : buildDeleteButton(listId, stateKey, item));
+
         container.appendChild(el);
     });
+}
 
-    container.querySelectorAll('.tag-delete').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const key = btn.getAttribute('data-key');
-            const idx = parseInt(btn.getAttribute('data-index'));
-            state[key].splice(idx, 1);
-            renderList(listId, key);
-            saveState();
-        });
-    });
+function buildDeleteButton(listId, stateKey, item) {
+    const deleteBtn = document.createElement('div');
+    deleteBtn.className = 'tag-delete';
+    deleteBtn.title = DELAYED_REMOVAL_LISTS.includes(stateKey)
+        ? `Schedule removal (${formatCountdown(REMOVAL_DELAY_MS)} cooling-off)`
+        : 'Remove';
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2.5');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+
+    const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line1.setAttribute('x1', '18'); line1.setAttribute('y1', '6');
+    line1.setAttribute('x2', '6'); line1.setAttribute('y2', '18');
+
+    const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line2.setAttribute('x1', '6'); line2.setAttribute('y1', '6');
+    line2.setAttribute('x2', '18'); line2.setAttribute('y2', '18');
+
+    svg.appendChild(line1);
+    svg.appendChild(line2);
+    deleteBtn.appendChild(svg);
+
+    deleteBtn.addEventListener('click', () => requestRemoval(listId, stateKey, item));
+    return deleteBtn;
+}
+
+function buildPendingControls(listId, stateKey, pending) {
+    const group = document.createElement('div');
+    group.className = 'pending-controls';
+
+    const label = document.createElement('span');
+    label.className = 'pending-label';
+    label.textContent = 'Removing in';
+
+    const timer = document.createElement('span');
+    timer.className = 'pending-timer';
+    timer.setAttribute('data-expires-at', pending.expiresAt);
+    timer.textContent = formatCountdown(pending.expiresAt - Date.now());
+
+    const keepBtn = document.createElement('button');
+    keepBtn.className = 'tag-keep';
+    keepBtn.type = 'button';
+    keepBtn.textContent = 'Keep blocked';
+    keepBtn.addEventListener('click', () => cancelRemoval(listId, stateKey, pending.id));
+
+    group.appendChild(label);
+    group.appendChild(timer);
+    group.appendChild(keepBtn);
+    return group;
 }
 
 function populateGames() {

@@ -36,6 +36,34 @@ let CONFIG = {
   ]
 };
 
+// ------------------------------------------------------------------
+// DELAYED REMOVAL (COOLING-OFF PERIOD)
+// ------------------------------------------------------------------
+// Taking an entry off a blocklist is never immediate. It is scheduled, and it
+// only lands if the dashboard tab that asked for it stays open the whole time.
+const REMOVAL_DELAY_MS = 12 * 60 * 1000;
+
+// Lists that removals are delayed on. Whitelist removals stay instant because
+// they only ever increase protection.
+const DELAYED_REMOVAL_LISTS = [
+  'CUSTOM_DOMAINS',
+  'CUSTOM_KEYWORDS',
+  'CUSTOM_PAGES',
+  'CUSTOM_EXACT_PAGES'
+];
+
+const PENDING_ALARM_PREFIX = 'blockx-pending-removal:';
+
+/**
+ * Formats a millisecond duration as m:ss.
+ */
+function formatCountdown(ms) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
 /**
  * Loads configuration from chrome.storage.local and merges it into CONFIG.
  */

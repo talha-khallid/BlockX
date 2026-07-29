@@ -40,6 +40,148 @@ function isMasterBlocked(domain) {
 }
 
 // ------------------------------------------------------------------
+// DELAYED REMOVAL ENGINE
+// ------------------------------------------------------------------
+// A removal is recorded as a pending record and only applied once its alarm
+// fires. The record is voided the moment the dashboard tab that created it is
+// closed or navigated away, so unblocking costs an uninterrupted 12 minutes.
+
+const OPTIONS_URL = chrome.runtime.getURL('src/options/options.html');
+
+async function getPendingRemovals() {
+  const { PENDING_REMOVALS } = await chrome.storage.local.get({ PENDING_REMOVALS: [] });
+  return Array.isArray(PENDING_REMOVALS) ? PENDING_REMOVALS : [];
+}
+
+function setPendingRemovals(pending) {
+  return chrome.storage.local.set({ PENDING_REMOVALS: pending });
+}
+
+// The tab counts as alive only while it exists AND is still on the dashboard.
+async function isOwnerTabAlive(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    return !!tab && typeof tab.url === 'string' && tab.url.startsWith(OPTIONS_URL);
+  } catch {
+    return false;
+  }
+}
+
+async function schedulePendingRemoval(listKey, value, tabId) {
+  if (!DELAYED_REMOVAL_LISTS.includes(listKey)) return null;
+  if (typeof tabId !== 'number' || typeof value !== 'string') return null;
+
+  const pending = await getPendingRemovals();
+  const existing = pending.find(p => p.listKey === listKey && p.value === value);
+  if (existing) return existing;
+
+  const now = Date.now();
+  const record = {
+    id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
+    listKey,
+    value,
+    tabId,
+    scheduledAt: now,
+    expiresAt: now + REMOVAL_DELAY_MS
+  };
+
+  pending.push(record);
+  await setPendingRemovals(pending);
+  chrome.alarms.create(PENDING_ALARM_PREFIX + record.id, { when: record.expiresAt });
+  return record;
+}
+
+async function cancelPendingRemoval(id) {
+  const pending = await getPendingRemovals();
+  const remaining = pending.filter(p => p.id !== id);
+  if (remaining.length === pending.length) return;
+  await setPendingRemovals(remaining);
+  await chrome.alarms.clear(PENDING_ALARM_PREFIX + id);
+}
+
+async function cancelPendingForTab(tabId) {
+  const pending = await getPendingRemovals();
+  const voided = pending.filter(p => p.tabId === tabId);
+  if (voided.length === 0) return;
+
+  await setPendingRemovals(pending.filter(p => p.tabId !== tabId));
+  await Promise.all(voided.map(p => chrome.alarms.clear(PENDING_ALARM_PREFIX + p.id)));
+  console.log(`[BlockX] Dashboard left — voided ${voided.length} pending removal(s).`);
+}
+
+async function executePendingRemoval(id) {
+  const pending = await getPendingRemovals();
+  const record = pending.find(p => p.id === id);
+  if (!record) return;
+
+  if (!(await isOwnerTabAlive(record.tabId))) {
+    await cancelPendingRemoval(id);
+    return;
+  }
+
+  // Alarms can fire early; re-arm rather than letting the wait be cut short.
+  if (Date.now() < record.expiresAt) {
+    chrome.alarms.create(PENDING_ALARM_PREFIX + id, { when: record.expiresAt });
+    return;
+  }
+
+  await setPendingRemovals(pending.filter(p => p.id !== id));
+  await chrome.alarms.clear(PENDING_ALARM_PREFIX + id);
+
+  const stored = await chrome.storage.local.get({ [record.listKey]: [] });
+  const list = Array.isArray(stored[record.listKey]) ? stored[record.listKey] : [];
+  const remaining = list.filter(item => item !== record.value);
+
+  if (remaining.length !== list.length) {
+    // This write trips the storage listener below, which rebuilds the DNR rules.
+    await chrome.storage.local.set({ [record.listKey]: remaining });
+    console.log(`[BlockX] Cooling-off elapsed — removed "${record.value}" from ${record.listKey}.`);
+  }
+}
+
+// Drops records whose dashboard tab is gone and re-arms the ones that survived.
+// After a browser restart every tab id is new, so everything pending is voided.
+async function reconcilePendingRemovals() {
+  const pending = await getPendingRemovals();
+  if (pending.length === 0) return;
+
+  const survivors = [];
+  for (const record of pending) {
+    if (await isOwnerTabAlive(record.tabId)) {
+      survivors.push(record);
+    } else {
+      await chrome.alarms.clear(PENDING_ALARM_PREFIX + record.id);
+    }
+  }
+
+  if (survivors.length !== pending.length) await setPendingRemovals(survivors);
+
+  for (const record of survivors) {
+    if (Date.now() >= record.expiresAt) {
+      await executePendingRemoval(record.id);
+    } else {
+      chrome.alarms.create(PENDING_ALARM_PREFIX + record.id, { when: record.expiresAt });
+    }
+  }
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name.startsWith(PENDING_ALARM_PREFIX)) {
+    executePendingRemoval(alarm.name.slice(PENDING_ALARM_PREFIX.length));
+  }
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  cancelPendingForTab(tabId);
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.url && !changeInfo.url.startsWith(OPTIONS_URL)) {
+    cancelPendingForTab(tabId);
+  }
+});
+
+// ------------------------------------------------------------------
 // DNR RULES UPDATE
 // ------------------------------------------------------------------
 async function updateBlockingRules() {
@@ -181,11 +323,13 @@ async function updateBlockingRules() {
 chrome.runtime.onInstalled.addListener(() => {
   ensureDomainListLoaded();
   updateBlockingRules();
+  reconcilePendingRemovals();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   ensureDomainListLoaded();
   updateBlockingRules();
+  reconcilePendingRemovals();
 });
 
 chrome.storage.onChanged.addListener(async (changes, area) => {
@@ -226,7 +370,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     ensureDomainListLoaded().then(() => {
       sendResponse({ blocked: isMasterBlocked(domain) });
     });
-    return true; 
+    return true;
+  }
+
+  if (request.action === 'schedulePendingRemoval') {
+    schedulePendingRemoval(request.listKey, request.value, sender.tab?.id)
+      .then((record) => sendResponse({ record }));
+    return true;
+  }
+
+  if (request.action === 'cancelPendingRemoval') {
+    cancelPendingRemoval(request.id).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+
+  if (request.action === 'getPendingRemovals') {
+    reconcilePendingRemovals()
+      .then(getPendingRemovals)
+      .then((pending) => sendResponse({ pending }));
+    return true;
   }
 
   return true;
