@@ -233,12 +233,34 @@
     return true;
   }
 
+  let scanDeadline = 0;
+
+  /**
+   * Waits for the document to settle before judging it. Each further change
+   * pushes the scan back, so a page mid-render is never graded on what it
+   * happened to be showing a moment ago — but the deadline caps how long that
+   * can be put off, so a page that never stops moving is still checked.
+   */
   function scheduleRescan() {
-    if (scanPrompted || scanAcknowledged || scanThrottleId) return;
+    if (scanPrompted || scanAcknowledged) return;
+
+    const now = Date.now();
+    if (!scanDeadline) scanDeadline = now + SCAN_MAX_DEFER_MS;
+
+    if (scanThrottleId) clearTimeout(scanThrottleId);
+    const wait = Math.max(0, Math.min(SCAN_THROTTLE_MS, scanDeadline - now));
+
     scanThrottleId = setTimeout(() => {
       scanThrottleId = null;
-      if (runContentScan()) return;
-    }, SCAN_THROTTLE_MS);
+      scanDeadline = 0;
+      runContentScan();
+    }, wait);
+  }
+
+  function cancelRescan() {
+    if (scanThrottleId) clearTimeout(scanThrottleId);
+    scanThrottleId = null;
+    scanDeadline = 0;
   }
 
   const PROMPT_STYLES = `
@@ -655,9 +677,11 @@
     const currentHost = window.location.hostname;
 
     // A route change is a fresh page as far as the scan is concerned.
-    if (currentUrl !== scanUrl) {
+    const routeChanged = currentUrl !== scanUrl;
+    if (routeChanged) {
       scanUrl = currentUrl;
       scanAcknowledged = false;
+      cancelRescan();
     }
 
     if (
@@ -670,6 +694,13 @@
       if (typeof observer !== 'undefined') observer.disconnect();
       handleBlock();
       return true;
+    }
+
+    // The URL is the only thing that has changed so far; the body still belongs
+    // to the previous view. Let it render, then judge what actually arrived.
+    if (routeChanged) {
+      scheduleRescan();
+      return false;
     }
 
     return runContentScan();

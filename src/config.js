@@ -472,7 +472,14 @@ function createBoundedFilter(keywords) {
 // Work budget for a single scan pass. Bounds the cost on huge documents.
 const SCAN_NODE_LIMIT = 6000;
 const SCAN_MIN_TEXT_LENGTH = 3;
+
+// How long the document must stop changing before it is judged. After a route
+// change the page still holds the previous view for a moment, so scanning
+// straight away would grade the page being left rather than the one arriving.
 const SCAN_THROTTLE_MS = 800;
+
+// ...but a page that never stops mutating still has to be looked at.
+const SCAN_MAX_DEFER_MS = 4000;
 
 function getBlockUrl(method, hostname, extensionUrl) {
   if (method === 'blocked_page' && CONFIG.SHOW_GAME_INSTANTLY && CONFIG.GAMES.length > 0) {
