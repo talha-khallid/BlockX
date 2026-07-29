@@ -1,30 +1,140 @@
-ELITE SHIELD BLOCKER PUBLIC LICENSE
-==================================
+BlockX Non-Commercial License
+Version 1.0
 
-DISTRIBUTION AND TERMINOLOGY CONDITIONS
----------------------------------------
+Copyright (c) 2026 Talha Khalid
 
-This software is provided completely free of charge for personal, public, and educational use. 
-
-You are granted full permission to copy, merge, modify, and distribute this software for any non-commercial purpose, subject to the following absolute restriction:
+Everyone is permitted to copy and distribute verbatim copies of this license
+document, but changing it is not allowed.
 
 
-CRITICAL COMMERCIAL USE RESTRICTION
------------------------------------
+0. SUMMARY
 
-> **THE SOFTWARE CANNOT BE SOLD, LEASED, OR USED FOR ANY COMMERCIAL VALUE-ADDED SERVICES OR MONETIZED OPERATIONS.**
-> Any attempt to sell or charge fees for copies or derivatives of this software violates this license.
+    This summary is for convenience only and is not part of the license.
 
+      Free to use, study, modify and share, for anything except making money.
+      No attribution required. No warranty of any kind.
 
-CREDITS AND ATTRIBUTIONS
-------------------------
-
-* **NO CREDIT REQUIRED:** You are not required to keep any credits, attributions, or copyright notices inside the source files. You may modify or strip them entirely.
+    The terms below are what actually apply.
 
 
-WARRANTY DISCLAIMER
--------------------
+1. DEFINITIONS
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. 
+    "The Software" means this program together with everything distributed
+    with it, including its source code, data files and documentation.
 
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+    "You" means any individual or organisation exercising the permissions
+    granted by this license.
+
+    "Non-Commercial Use" means use that is not primarily intended for, or
+    directed toward, commercial advantage or monetary compensation. Personal
+    use, private use, study, teaching, academic research, and use by a
+    non-profit organisation for its own purposes are Non-Commercial Use.
+
+    "Commercial Use" means any use that is not Non-Commercial Use. It
+    includes, without limitation:
+
+      (a) selling, licensing, renting, leasing or sublicensing the Software
+          or any work derived from it, whether alone or as part of a larger
+          product;
+
+      (b) charging any fee for the Software, for access to it, or for a
+          service whose value depends on it, including subscription,
+          hosting, installation and support fees;
+
+      (c) distributing the Software in exchange for advertising revenue or
+          any other indirect payment; and
+
+      (d) including the Software in a product or service that is offered
+          commercially, whether or not the Software is itself charged for.
+
+
+2. GRANT OF PERMISSIONS
+
+    Subject to the conditions in section 3, you are granted a worldwide,
+    royalty-free, non-exclusive licence to:
+
+      (a) use and run the Software for any Non-Commercial Use, on any number
+          of devices;
+
+      (b) study the Software and modify it in any way;
+
+      (c) reproduce the Software and any modified version of it; and
+
+      (d) distribute the Software and any modified version of it, in source
+          or compiled form, for Non-Commercial Use.
+
+
+3. CONDITIONS
+
+    3.1  Non-Commercial Use only.
+
+         Commercial Use is not permitted under this license and is not
+         granted by it. No exception is implied by anything else in this
+         document.
+
+    3.2  This license travels with the Software.
+
+         If you distribute the Software or any modified version of it, you
+         must include a copy of this license with it, and you may not offer
+         it under terms that grant recipients more than this license grants
+         you.
+
+    3.3  Attribution is not required.
+
+         You are not obliged to keep any credit, attribution or copyright
+         notice inside the source files. You may modify or remove them.
+         This does not affect condition 3.2, which applies regardless.
+
+    3.4  Third-party material is not covered by this license.
+
+         Parts of the Software originate elsewhere and remain under the
+         terms of their own authors. See CREDITS.md. Nothing here grants any
+         permission over that material.
+
+    3.5  No trademark rights are granted.
+
+         This license does not grant permission to use the name of the
+         author, or the name "BlockX", to endorse or promote anything.
+
+
+4. TERMINATION
+
+    The permissions granted by this license end automatically if you breach
+    any of its conditions.
+
+    They are reinstated if you cure the breach within 30 days of becoming
+    aware of it, unless the copyright holder has already notified you of the
+    breach, in which case reinstatement is at the copyright holder's
+    discretion.
+
+
+5. SEPARATE PERMISSION
+
+    Rights not granted here may be granted in writing by the copyright
+    holder. Ask.
+
+
+6. NO WARRANTY
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+    OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+    THE SOFTWARE FILTERS AND BLOCKS WEB CONTENT. NO FILTER IS COMPLETE OR
+    CORRECT. IT IS NOT OFFERED AS A SAFETY, SECURITY OR PARENTAL CONTROL
+    MEASURE AND MUST NOT BE RELIED UPON AS ONE.
+
+
+7. LIMITATION OF LIABILITY
+
+    IN NO EVENT SHALL THE AUTHOR OR COPYRIGHT HOLDER BE LIABLE FOR ANY
+    CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+    TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+    SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+8. SEVERABILITY
+
+    If any provision of this license is held unenforceable, that provision
+    shall be modified only to the extent necessary to make it enforceable,
+    and the remaining provisions shall stay in full effect.
