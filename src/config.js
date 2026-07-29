@@ -351,10 +351,34 @@ function activeGrants(grants) {
   return grants.filter(g => g && typeof g.host === 'string' && g.expiresAt > now);
 }
 
-function hasTempGrant(hostname, grants) {
+/**
+ * A pass covers one host in one tab, and only until that tab has actually
+ * loaded the page once. Reloading, or opening the same site anywhere else,
+ * gets nothing — the timer is an upper bound on a single visit, not a window
+ * during which the site is open.
+ */
+function hasTempGrant(hostname, grants, tabId) {
   const host = String(hostname || '').toLowerCase().replace(/^www\./, '');
   if (!host) return false;
+
   return activeGrants(grants).some(g => {
+    if (typeof tabId === 'number' && g.tabId !== tabId) return false;
+    if (g.consumed) return false;
+    const granted = g.host.toLowerCase().replace(/^www\./, '');
+    return host === granted || host.endsWith('.' + granted);
+  });
+}
+
+/**
+ * Whether a tab is currently sitting on the page a pass was spent on. Used by
+ * the content script, which must not re-block the page the pass just opened.
+ */
+function isGrantedTab(hostname, grants, tabId) {
+  const host = String(hostname || '').toLowerCase().replace(/^www\./, '');
+  if (!host || typeof tabId !== 'number') return false;
+
+  return activeGrants(grants).some(g => {
+    if (g.tabId !== tabId) return false;
     const granted = g.host.toLowerCase().replace(/^www\./, '');
     return host === granted || host.endsWith('.' + granted);
   });

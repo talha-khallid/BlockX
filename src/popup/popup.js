@@ -28,13 +28,17 @@ async function setupUnlock() {
         tabId: currentTab.id,
         url: currentTab.url || ''
     });
-    if (!context || !context.target) return;
+    if (!context) return;
 
     if (context.active) {
         showActivePass(context.active);
         return;
     }
-    if (!(context.phrase || '').trim()) return;
+    if (context.refusedHost) {
+        showRefused(context.refusedHost);
+        return;
+    }
+    if (!context.target || !(context.phrase || '').trim()) return;
 
     showUnlockPanel(context, context.target);
 }
@@ -61,7 +65,7 @@ function showUnlockPanel(context, target) {
     if (hostEl) hostEl.textContent = target.host;
     if (phraseEl) phraseEl.textContent = phrase;
     if (note) {
-        note.textContent = `Grants ${Math.round(context.durationMs / 60000)} minutes on ${target.host}, then it closes again.`;
+        note.textContent = `One visit to ${target.host} in this tab. Reloading or opening it again blocks it.`;
     }
 
     const collapse = (text) => text.trim().replace(/\s+/g, ' ');
@@ -76,6 +80,7 @@ function showUnlockPanel(context, target) {
         const response = await sendMessage({
             action: 'grantTempPass',
             host: target.host,
+            tabId: currentTab.id,
             typed: input.value
         });
 
@@ -91,6 +96,17 @@ function showUnlockPanel(context, target) {
     });
 
     input.focus();
+}
+
+function showRefused(host) {
+    const panel = document.getElementById('refused-panel');
+    const hostEl = document.getElementById('refused-host');
+    if (!panel) return;
+
+    panel.classList.remove('hidden');
+    document.getElementById('context-action')?.classList.add('hidden');
+    document.getElementById('toggle-quick-add')?.classList.add('hidden');
+    if (hostEl) hostEl.textContent = host;
 }
 
 function showActivePass(grant) {

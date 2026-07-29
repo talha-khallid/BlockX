@@ -61,11 +61,21 @@
   // ------------------------------------------------------------------
   await loadConfig();
 
+  // A pass belongs to one tab, and only the service worker knows which tab
+  // this is, so it is asked once per page load.
+  let tabUnlocked = false;
+  try {
+    const reply = await chrome.runtime.sendMessage({
+      action: 'isTabUnlocked',
+      host: window.location.hostname
+    });
+    tabUnlocked = !!(reply && reply.unlocked);
+  } catch { /* service worker asleep or reloading */ }
+
   function isWhitelisted() {
     if (!CONFIG) return false;
-    if (matchesAnyHostEntry(window.location.hostname, window.location.port, CONFIG.ALLOWED_DOMAINS)) return true;
-    // A pass earned in the popup suspends everything for a few minutes.
-    return hasTempGrant(window.location.hostname, CONFIG.TEMP_GRANTS);
+    if (tabUnlocked) return true;
+    return matchesAnyHostEntry(window.location.hostname, window.location.port, CONFIG.ALLOWED_DOMAINS);
   }
 
   // If the site is whitelisted, drop the barrier and shut down completely.

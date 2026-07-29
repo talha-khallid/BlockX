@@ -465,7 +465,9 @@ async function updateBlockingRules() {
 
     // Temporary passes outrank the permanent whitelist so they cannot be
     // shadowed by a lower-priority block on the same host.
-    activeGrants(config.TEMP_GRANTS).forEach(g => addAllowRule(200, g.host));
+    activeGrants(config.TEMP_GRANTS)
+      .filter(g => !g.consumed)
+      .forEach(g => addAllowRule(200, g.host));
 
     if (config.EXACT_PAGE_URLS) {
       config.EXACT_PAGE_URLS.forEach(p => addExactPageRule(8, p));
@@ -544,7 +546,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (sender.frameId === 0) {
       loadConfig().then(async (config) => {
         const url = new URL(sender.tab.url);
-        await rememberBlocked(sender.tab.id, sender.tab.url);
+        await rememberBlocked(sender.tab.id, sender.tab.url,
+          blockReason(sender.tab.url, config, sender.tab.id) || 'content');
         const targetUrl = getBlockUrl(config.BLOCK_METHOD, url.hostname);
         chrome.tabs.update(sender.tab.id, { url: targetUrl });
       });
@@ -602,7 +605,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (/^https?:/i.test(url)) {
         try {
           const parsed = new URL(url);
-          if (shouldBlockUrl(url, config)) target = { host: parsed.hostname, url };
+          const reason = blockReason(url, config, request.tabId);
+          if (reason) target = { host: parsed.hostname, url, reason };
         } catch { /* ignore */ }
       }
       if (!target) {
@@ -611,13 +615,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
 
       const active = target
-        ? grants.find(g => hasTempGrant(target.host, [g])) || null
+        ? grants.find(g => isGrantedTab(target.host, [g], request.tabId)) || null
         : null;
+
+      // A domain on the user's own restricted list was a deliberate decision.
+      // No pass is offered for it at any price.
+      const refused = !!target && target.reason === 'custom_domain';
 
       sendResponse({
         phrase: config.UNLOCK_PHRASE || '',
         durationMs: TEMP_GRANT_MS,
-        target,
+        target: refused ? null : target,
+        refusedHost: refused ? target.host : null,
         active
       });
     })();
@@ -638,7 +647,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return;
       }
 
-      const record = await grantTempPass(request.host);
+      // Never issue a pass for the user's own restricted domains, even if the
+      // request is crafted rather than coming from the popup.
+      if (blockReason(`https://${request.host}/`, config, -1) === 'custom_domain') {
+        sendResponse({ ok: false, reason: 'restricted' });
+        return;
+      }
+
+      const record = await grantTempPass(request.host, request.tabId);
       if (!record) {
         sendResponse({ ok: false, reason: 'badhost' });
         return;
@@ -647,6 +663,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // navigate into the old ruleset, which redirects straight back.
       await queueRuleUpdate();
       sendResponse({ ok: true, record });
+    })();
+    return true;
+  }
+
+  if (request.action === 'isTabUnlocked') {
+    (async () => {
+      const config = await loadConfig();
+      sendResponse({
+        unlocked: isGrantedTab(request.host, config.TEMP_GRANTS, sender.tab?.id)
+      });
     })();
     return true;
   }
@@ -693,17 +719,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // SPA NAVIGATION INTERCEPTION (webNavigation.onCommitted)
 // ------------------------------------------------------------------
 
-function shouldBlockUrl(urlStr, config) {
-  if (!urlStr) return false;
+function shouldBlockUrl(urlStr, config, tabId) {
+  return blockReason(urlStr, config, tabId) !== null;
+}
+
+/**
+ * Why a URL is blocked, or null when it is not. The reason matters because a
+ * domain the user put on their own restricted list is a deliberate decision
+ * and is never offered a temporary pass.
+ */
+function blockReason(urlStr, config, tabId) {
+  if (!urlStr) return null;
   const urlLower = urlStr.toLowerCase();
 
-  if (urlLower.startsWith('chrome-extension://') || urlLower.startsWith('chrome://') || urlLower.startsWith('about:')) return false;
+  if (urlLower.startsWith('chrome-extension://') || urlLower.startsWith('chrome://') || urlLower.startsWith('about:')) return null;
 
   try {
     const parsed = new URL(urlStr);
-    if (matchesAnyHostEntry(parsed.hostname, parsed.port, config.ALLOWED_DOMAINS)) return false;
-    // A pass earned in the popup outranks every block below.
-    if (hasTempGrant(parsed.hostname, config.TEMP_GRANTS)) return false;
+    if (matchesAnyHostEntry(parsed.hostname, parsed.port, config.ALLOWED_DOMAINS)) return null;
+    // A pass earned in the popup outranks every block below, but only in the
+    // one tab it was granted for and only until that tab loads the page once.
+    if (hasTempGrant(parsed.hostname, config.TEMP_GRANTS, tabId)) return null;
   } catch { /* ignore */ }
 
   if (config.DOMAINS && config.DOMAINS.length > 0) {
@@ -714,9 +750,9 @@ function shouldBlockUrl(urlStr, config) {
         const clean = d.trim().toLowerCase();
         return hostname === clean || hostname.endsWith('.' + clean);
       });
-      if (domainMatch) return true;
+      if (domainMatch) return 'custom_domain';
     } catch {
-      if (config.DOMAINS.some(d => urlLower.includes(d.trim().toLowerCase()))) return true;
+      if (config.DOMAINS.some(d => urlLower.includes(d.trim().toLowerCase()))) return 'custom_domain';
     }
   }
 
@@ -725,7 +761,7 @@ function shouldBlockUrl(urlStr, config) {
       const clean = p.trim().toLowerCase().replace(/^https?:\/\//i, '');
       return urlLower.includes(clean);
     });
-    if (pageMatch) return true;
+    if (pageMatch) return 'page';
   }
 
   if (config.EXACT_PAGE_URLS && config.EXACT_PAGE_URLS.length > 0) {
@@ -742,12 +778,12 @@ function shouldBlockUrl(urlStr, config) {
             return hostAndPath === clean || hostAndPath === clean + '/';
         }
       });
-      if (exactMatch) return true;
+      if (exactMatch) return 'exact_page';
     } catch { /* ignore */ }
   }
 
   if (config.KEYWORDS && config.KEYWORDS.length > 0) {
-    if (config.KEYWORDS.some(k => urlLower.includes(k.trim().toLowerCase()))) return true;
+    if (config.KEYWORDS.some(k => urlLower.includes(k.trim().toLowerCase()))) return 'keyword';
   }
 
   // Search terms, checked with word boundaries so "porn" fires but "analysis"
@@ -759,26 +795,65 @@ function shouldBlockUrl(urlStr, config) {
       filter.lastIndex = 0;
       if (filter.test(query)) {
         console.log(`[BlockX] Blocked search: ${JSON.stringify(query)}`);
-        return true;
+        return 'search';
       }
     }
   }
 
   try {
     const hostname = new URL(urlStr).hostname.toLowerCase().replace(/^www\./, '');
-    if (isMasterBlocked(hostname)) return true;
+    if (isMasterBlocked(hostname)) return 'master_list';
   } catch { /* ignore */ }
 
-  return false;
+  return null;
 }
+
+// A pass is spent the moment its page commits. Anything after that — a reload,
+// a second tab, a link back later — is blocked again even with time left.
+chrome.webNavigation.onCommitted.addListener(async (details) => {
+  if (details.frameId !== 0) return;
+
+  const { TEMP_GRANTS = [] } = await chrome.storage.local.get({ TEMP_GRANTS: [] });
+  if (TEMP_GRANTS.length === 0) return;
+
+  let host;
+  try {
+    host = new URL(details.url).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return;
+  }
+
+  let changed = false;
+  const next = TEMP_GRANTS.map(g => {
+    if (g.consumed || g.tabId !== details.tabId) return g;
+    const granted = g.host.toLowerCase().replace(/^www\./, '');
+    if (host !== granted && !host.endsWith('.' + granted)) return g;
+    changed = true;
+    return { ...g, consumed: true };
+  });
+
+  if (changed) {
+    await chrome.storage.local.set({ TEMP_GRANTS: next });
+    console.log('[BlockX] Temporary pass spent.');
+  }
+});
+
+// A pass belongs to its tab and dies with it.
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+  const { TEMP_GRANTS = [] } = await chrome.storage.local.get({ TEMP_GRANTS: [] });
+  const remaining = TEMP_GRANTS.filter(g => g.tabId !== tabId);
+  if (remaining.length !== TEMP_GRANTS.length) {
+    await chrome.storage.local.set({ TEMP_GRANTS: remaining });
+  }
+});
 
 // Remembers what a tab was sent away from, so the popup can offer to unlock it
 // even once the tab is showing the block page or a game.
-async function rememberBlocked(tabId, url) {
+async function rememberBlocked(tabId, url, reason) {
   try {
     const parsed = new URL(url);
     const { BLOCKED_ORIGINS = {} } = await chrome.storage.session.get({ BLOCKED_ORIGINS: {} });
-    BLOCKED_ORIGINS[tabId] = { host: parsed.hostname, url, at: Date.now() };
+    BLOCKED_ORIGINS[tabId] = { host: parsed.hostname, url, reason: reason || null, at: Date.now() };
     await chrome.storage.session.set({ BLOCKED_ORIGINS });
   } catch { /* ignore */ }
 }
@@ -801,9 +876,10 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
   const config = await loadConfig();
   if (config.BLOCK_METHOD === 'none') return;
 
-  if (shouldBlockUrl(url, config)) {
-    console.log(`[BlockX] Blocked via onBeforeNavigate: ${url}`);
-    await rememberBlocked(details.tabId, url);
+  const reason = blockReason(url, config, details.tabId);
+  if (reason) {
+    console.log(`[BlockX] Blocked via onBeforeNavigate (${reason}): ${url}`);
+    await rememberBlocked(details.tabId, url, reason);
     try {
       const hostname = new URL(url).hostname;
       chrome.tabs.update(details.tabId, { url: getBlockUrl(config.BLOCK_METHOD, hostname) });
@@ -822,17 +898,17 @@ async function readGrants() {
   return activeGrants(TEMP_GRANTS);
 }
 
-async function grantTempPass(host) {
+async function grantTempPass(host, tabId) {
   const entry = normaliseHostEntry(host);
-  if (!entry) return null;
+  if (!entry || typeof tabId !== 'number') return null;
 
-  const grants = (await readGrants()).filter(g => g.host !== entry.host);
-  const record = { host: entry.host, expiresAt: Date.now() + TEMP_GRANT_MS };
+  const grants = (await readGrants()).filter(g => !(g.host === entry.host && g.tabId === tabId));
+  const record = { host: entry.host, tabId, consumed: false, expiresAt: Date.now() + TEMP_GRANT_MS };
   grants.push(record);
 
   await chrome.storage.local.set({ TEMP_GRANTS: grants });
   chrome.alarms.create(TEMP_GRANT_ALARM, { when: record.expiresAt + 500 });
-  console.log(`[BlockX] Temporary pass for ${record.host}, ${TEMP_GRANT_MS / 60000} minutes.`);
+  console.log(`[BlockX] Temporary pass for ${record.host} in tab ${tabId}, one visit.`);
   return record;
 }
 

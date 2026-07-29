@@ -52,6 +52,15 @@
                     <p id="unlock-note" class="help-text"></p>
                 </div>
 
+                <!-- Blocked by the user's own restricted list: no pass offered -->
+                <div id="refused-panel" class="refused-panel hidden">
+                    <div class="unlock-head">
+                        <span class="unlock-title">Blocked</span>
+                        <span id="refused-host" class="unlock-host"></span>
+                    </div>
+                    <p class="refused-text">You put this on your restricted list yourself. There is no temporary pass for it.</p>
+                </div>
+
                 <!-- Active pass -->
                 <div id="pass-panel" class="pass-panel hidden">
                     <div class="pass-head">

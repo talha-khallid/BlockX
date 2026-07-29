@@ -386,3 +386,14 @@ body {
     cursor: pointer;
 }
 .btn-ghost:hover { color: var(--text-main); border-color: var(--text-sub); }
+
+/* Blocked by the user's own list — no pass on offer */
+.refused-text {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-sub);
+    background: var(--bg-sub);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin: 0;
+}
