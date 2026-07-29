@@ -384,18 +384,28 @@ input:checked + .hub-item-box .icon { color: var(--accent-dark); }
 .interactive-list-manager { display: flex; flex-direction: column; gap: 20px; }
 .input-row { display: flex; gap: 12px; }
 
-#keyword-input, #domain-input, #page-input, #exact-page-input, #allowed-domain-input, #new-password, #gateway-password, #custom-redirect-input {
+/* Matched structurally rather than by id — an id list silently drops the
+   styling from every input added later. */
+.input-row input[type="text"],
+.input-row input[type="url"],
+.input-row input[type="password"],
+#gateway-password {
     flex: 1;
+    min-width: 0;
     padding: 12px 16px;
     border: 1px solid var(--border-base);
     border-radius: var(--radius-md);
+    font-family: inherit;
     font-size: 14px;
     background: var(--bg-card);
     color: var(--text-primary);
     transition: border-color 0.2s;
 }
 
-#keyword-input:focus, #domain-input:focus, #page-input:focus, #exact-page-input:focus, #allowed-domain-input:focus, #new-password:focus, #gateway-password:focus, #custom-redirect-input:focus { outline: none; border-color: var(--accent); }
+.input-row input[type="text"]:focus,
+.input-row input[type="url"]:focus,
+.input-row input[type="password"]:focus,
+#gateway-password:focus { outline: none; border-color: var(--accent); }
 
 .tag-cloud { display: flex; flex-direction: column; gap: 8px; min-height: 100px; padding: 20px 0; overflow-y: auto; max-height: 500px; }
 .tag-item {
