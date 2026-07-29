@@ -1,5 +1,5 @@
 // background.js
-importScripts('config.js');
+importScripts('config.js', 'settings-sync.js');
 
 const DYNAMIC_RULE_LIMIT = chrome.declarativeNetRequest.MAX_NUMBER_OF_DYNAMIC_AND_SESSION_RULES || 30000;
 
@@ -271,7 +271,9 @@ async function reconcilePendingState() {
 }
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name.startsWith(PENDING_ALARM_PREFIX)) {
+  if (alarm.name === 'blockx-settings-poll') {
+    reconcileSettings('poll');
+  } else if (alarm.name.startsWith(PENDING_ALARM_PREFIX)) {
     executePendingChange(alarm.name.slice(PENDING_ALARM_PREFIX.length));
   } else if (alarm.name.startsWith(PENDING_IMPORT_ALARM_PREFIX)) {
     executePendingImport(alarm.name.slice(PENDING_IMPORT_ALARM_PREFIX.length));
@@ -427,30 +429,46 @@ async function updateBlockingRules() {
 // ------------------------------------------------------------------
 // EVENT LISTENERS
 // ------------------------------------------------------------------
-chrome.runtime.onInstalled.addListener(() => {
+async function bootstrap(reason) {
   ensureDomainListLoaded();
-  updateBlockingRules();
-  reconcilePendingState();
-});
+  await reconcileSettings(reason);
+  await updateBlockingRules();
+  await reconcilePendingState();
+}
 
-chrome.runtime.onStartup.addListener(() => {
-  ensureDomainListLoaded();
-  updateBlockingRules();
-  reconcilePendingState();
-});
+chrome.runtime.onInstalled.addListener(() => { bootstrap('installed'); });
+chrome.runtime.onStartup.addListener(() => { bootstrap('startup'); });
+
+// Settings the extension itself changed still need fanning out to the other
+// stores, but the revision stamp must not itself retrigger a publish.
+let publishTimer = null;
+function schedulePublish() {
+  if (publishTimer) clearTimeout(publishTimer);
+  publishTimer = setTimeout(() => {
+    publishTimer = null;
+    publishSettings();
+  }, 400);
+}
 
 chrome.storage.onChanged.addListener(async (changes, area) => {
-  if (area === 'local') {
-    const shouldUpdate = [
-      'CUSTOM_DOMAINS', 'CUSTOM_KEYWORDS', 'CUSTOM_PAGES',
-      'CUSTOM_EXACT_PAGES', 'CUSTOM_ALLOWED_DOMAINS', 'BLOCK_METHOD', 'ACTIVE_GAME_INDEX'
-    ].some(key => changes[key] !== undefined);
+  if (area !== 'local') return;
 
-    if (shouldUpdate) {
-      await updateBlockingRules();
-    }
-  }
+  const shouldUpdate = [
+    'CUSTOM_DOMAINS', 'CUSTOM_KEYWORDS', 'CUSTOM_PAGES',
+    'CUSTOM_EXACT_PAGES', 'CUSTOM_ALLOWED_DOMAINS', 'BLOCK_METHOD', 'ACTIVE_GAME_INDEX'
+  ].some(key => changes[key] !== undefined);
+
+  if (shouldUpdate) await updateBlockingRules();
+
+  if (SETTINGS_KEYS.some(key => changes[key] !== undefined)) schedulePublish();
 });
+
+// Another profile on the same account changed something.
+chrome.storage.sync.onChanged.addListener(() => { reconcileSettings('sync-change'); });
+
+// The settings file can be changed by a profile that is not running right now,
+// so it is re-read periodically rather than only at startup.
+chrome.alarms.create('blockx-settings-poll', { periodInMinutes: 5 });
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'getConfig') {
@@ -502,6 +520,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         pending: await getPendingChanges(),
         pendingImport: await getPendingImport()
       }));
+    return true;
+  }
+
+  if (request.action === 'getSyncStatus') {
+    settingsSyncStatus().then((status) => sendResponse({ status }));
+    return true;
+  }
+
+  if (request.action === 'reconcileSettings') {
+    reconcileSettings('dashboard').then((result) => sendResponse({ result }));
     return true;
   }
 

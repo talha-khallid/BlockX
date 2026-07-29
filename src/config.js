@@ -92,6 +92,82 @@ const IMPORTABLE_KEYS = [
   'THEME'
 ];
 
+// ------------------------------------------------------------------
+// SHARED SETTINGS
+// ------------------------------------------------------------------
+// The same settings follow the user across profiles and machines through two
+// independent stores, reconciled by revision — highest revision wins:
+//
+//   chrome.storage.sync   every profile signed into the same Google account.
+//                         Always on, nothing to install.
+//   the settings file     every profile on this machine regardless of account,
+//                         reached through the native host in native/. Only
+//                         active once that helper has been installed.
+const NATIVE_HOST_NAME = 'com.blockx.settings';
+const SETTINGS_FILE_VERSION = 1;
+
+// Keys that make up a shared settings snapshot. Deliberately the same set an
+// imported backup may write — pending state is per-tab and never travels.
+const SETTINGS_KEYS = IMPORTABLE_KEYS;
+
+// Mixed into the file checksum. Not a secret and not meant to stop a
+// determined edit — it exists so a casual hand-edit of the settings file is
+// detected rather than silently trusted.
+const SETTINGS_CHECKSUM_SALT = 'blockx-settings-v1';
+
+/**
+ * Stable stringify: object keys sorted at every level so the same settings
+ * always produce the same checksum.
+ */
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort()
+      .map(k => `${JSON.stringify(k)}:${canonicalJson(value[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value === undefined ? null : value);
+}
+
+/**
+ * Narrows an arbitrary object to the known settings keys.
+ */
+function pickSettings(source) {
+  if (!source || typeof source !== 'object') return null;
+  const picked = {};
+  for (const key of SETTINGS_KEYS) {
+    if (source[key] !== undefined) picked[key] = source[key];
+  }
+  return Object.keys(picked).length > 0 ? picked : null;
+}
+
+/**
+ * True when `incoming` would loosen protection relative to `current`:
+ * anything dropped from a blocklist, anything added to an exemption list,
+ * a coarser scan threshold, or the dashboard lock being switched off.
+ */
+function weakensProtection(current, incoming) {
+  const list = (source, key) => (Array.isArray(source?.[key]) ? source[key] : []);
+
+  for (const key of DELAYED_REMOVAL_LISTS) {
+    const before = list(current, key);
+    const after = new Set(list(incoming, key));
+    if (incoming[key] !== undefined && before.some(item => !after.has(item))) return true;
+  }
+
+  for (const key of ['CUSTOM_ALLOWED_DOMAINS', ...DELAYED_ADDITION_LISTS]) {
+    const before = new Set(list(current, key));
+    if (list(incoming, key).some(item => !before.has(item))) return true;
+  }
+
+  if (typeof incoming.SCAN_SENSITIVITY === 'number'
+      && incoming.SCAN_SENSITIVITY > (current.SCAN_SENSITIVITY ?? 2)) return true;
+
+  if (current.SECURITY_ENABLED && incoming.SECURITY_ENABLED === false) return true;
+
+  return false;
+}
+
 /**
  * Formats a millisecond duration as m:ss.
  */

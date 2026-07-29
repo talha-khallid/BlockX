@@ -437,6 +437,21 @@ input:checked + .hub-item-box .icon { color: var(--accent-dark); }
 }
 .scan-message:focus { outline: none; border-color: var(--accent); }
 
+/* Shared settings status */
+.sync-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; }
+.sync-row + .sync-row { border-top: 1px solid var(--border-light); }
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--text-tertiary); }
+.sync-dot.on { background: #10b981; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15); }
+.sync-dot.off { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15); }
+.sync-info { min-width: 0; }
+.sync-info .title { display: block; font-weight: 700; font-size: 14px; margin-bottom: 3px; }
+.sync-info .desc { display: block; font-size: 13px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.sync-footer {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border-light);
+}
+.sync-revision { font-size: 12px; color: var(--text-tertiary); }
+
 /* Waiting to be added — not enforced yet, so no strike-through */
 .tag-item.pending-add .tag-label { text-decoration: none; font-style: italic; }
 

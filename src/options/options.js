@@ -84,6 +84,7 @@ async function init() {
     // 4. Load scheduled removals and start their countdowns
     setupScanSettings();
     setupImportOath();
+    setupSyncStatus();
     await refreshPendingState();
     renderAllLists();
     renderPendingImport();
@@ -138,6 +139,53 @@ function setupScanSettings() {
             state.SCAN_SENSITIVITY = parseInt(input.value, 10);
             saveState();
         });
+    });
+}
+
+// ------------------------------------------------------------------
+// SHARED SETTINGS STATUS
+// ------------------------------------------------------------------
+
+function setupSyncStatus() {
+    const refreshBtn = document.getElementById('sync-refresh-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            chrome.runtime.sendMessage({ action: 'reconcileSettings' }, () => {
+                renderSyncStatus();
+                showToast('Settings checked across all stores.');
+            });
+        });
+    }
+    renderSyncStatus();
+}
+
+function renderSyncStatus() {
+    chrome.runtime.sendMessage({ action: 'getSyncStatus' }, (response) => {
+        const status = response && response.status;
+        if (!status) return;
+
+        const accountDot = document.getElementById('sync-account-dot');
+        if (accountDot) accountDot.className = 'sync-dot on';
+
+        const fileDot = document.getElementById('sync-file-dot');
+        const fileDesc = document.getElementById('sync-file-desc');
+        if (fileDot && fileDesc) {
+            if (status.file.available) {
+                fileDot.className = 'sync-dot on';
+                fileDesc.textContent = status.file.path || 'Active on this machine.';
+            } else {
+                fileDot.className = 'sync-dot off';
+                fileDesc.textContent = 'Not set up. Run native/install.py once to share settings '
+                    + 'with every profile on this machine, including ones on other accounts.';
+            }
+        }
+
+        const revision = document.getElementById('sync-revision');
+        if (revision) {
+            revision.textContent = status.revision
+                ? `Last change ${new Date(status.revision).toLocaleString()}`
+                : 'No changes recorded yet';
+        }
     });
 }
 
