@@ -4,6 +4,29 @@ importScripts('config.js', 'settings-sync.js');
 const DYNAMIC_RULE_LIMIT = chrome.declarativeNetRequest.MAX_NUMBER_OF_DYNAMIC_AND_SESSION_RULES || 30000;
 
 // ------------------------------------------------------------------
+// SAFESEARCH
+// ------------------------------------------------------------------
+// Enforced by the extension itself rather than by a browser policy, so it
+// holds without an administrator having set anything up. There is no setting
+// for it and nothing in the extension turns it off — this checks on every
+// start and every poll that it is still on, and switches it back if not.
+const SAFESEARCH_RULESET = 'ruleset_safesearch';
+
+async function ensureSafeSearchEnabled() {
+  try {
+    const enabled = await chrome.declarativeNetRequest.getEnabledRulesets();
+    if (enabled.includes(SAFESEARCH_RULESET)) return;
+
+    await chrome.declarativeNetRequest.updateEnabledRulesets({
+      enableRulesetIds: [SAFESEARCH_RULESET]
+    });
+    console.log('[BlockX] SafeSearch ruleset was off. Switched back on.');
+  } catch (e) {
+    console.error('[BlockX] Could not verify the SafeSearch ruleset:', e);
+  }
+}
+
+// ------------------------------------------------------------------
 // MASTER DOMAIN LIST (Simple JSON Set — O(1) lookup, service-worker safe)
 // ------------------------------------------------------------------
 
@@ -309,6 +332,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === TEMP_GRANT_ALARM) {
     expireGrants();
   } else if (alarm.name === 'blockx-settings-poll') {
+    ensureSafeSearchEnabled();
     reconcileSettings('poll');
   } else if (alarm.name.startsWith(PENDING_ALARM_PREFIX)) {
     executePendingChange(alarm.name.slice(PENDING_ALARM_PREFIX.length));
@@ -493,6 +517,7 @@ async function updateBlockingRules() {
 async function bootstrap(reason) {
   ensureDomainListLoaded();
   ensureBadwordsLoaded();
+  ensureSafeSearchEnabled();
   await reconcileSettings(reason);
   await queueRuleUpdate();
   await reconcilePendingState();
