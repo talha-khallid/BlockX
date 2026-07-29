@@ -98,7 +98,10 @@ const HARDENING_OPTIONS = [
 const BROWSER_TARGETS = {
   chrome: {
     label: 'Google Chrome',
-    linuxDir: '/etc/opt/chrome/policy/managed',
+    linuxDir: '/etc/opt/chrome/policies/managed',
+    // Written by an earlier version of this page to a directory Chrome never
+    // reads. Cleaned up so it cannot sit there looking like it does something.
+    legacyLinuxDir: '/etc/opt/chrome/policy/managed',
     macDomain: 'com.google.Chrome',
     winKey: 'HKLM:\\SOFTWARE\\Policies\\Google\\Chrome'
   },
@@ -155,23 +158,25 @@ function shellQuote(text) {
 // ------------------------------------------------------------------
 
 function linuxCommand(policies, target) {
-  const json = JSON.stringify(policies, null, 2);
+  const json = JSON.stringify(policies);
   const path = `${target.linuxDir}/${POLICY_FILE_NAME}`;
-  return [
-    `sudo mkdir -p ${target.linuxDir} && sudo tee ${path} > /dev/null <<'BLOCKX_POLICY'`,
-    json,
-    'BLOCKX_POLICY'
-  ].join('\n');
+  const cleanup = target.legacyLinuxDir
+    ? ` && sudo rm -f ${target.legacyLinuxDir}/${POLICY_FILE_NAME}`
+    : '';
+
+  // Deliberately one line. A multi-line heredoc is fragile when pasted.
+  return `sudo mkdir -p ${target.linuxDir} && printf '%s' ${shellQuote(json)}`
+    + ` | sudo tee ${path} > /dev/null${cleanup}`
+    + ` && echo "Applied. Now quit ${target.label} completely and start it again."`;
 }
 
 function macCommand(policies, target) {
-  const json = JSON.stringify(policies, null, 2);
+  const json = JSON.stringify(policies);
   const plist = `/Library/Managed Preferences/${target.macDomain}.plist`;
-  return [
-    `sudo mkdir -p "/Library/Managed Preferences" && printf '%s' ${shellQuote(json)} \\`,
-    `  | plutil -convert xml1 -o - - \\`,
-    `  | sudo tee ${shellQuote(plist)} > /dev/null && sudo killall cfprefsd`
-  ].join('\n');
+  return `sudo mkdir -p "/Library/Managed Preferences" && printf '%s' ${shellQuote(json)}`
+    + ` | plutil -convert xml1 -o - - | sudo tee ${shellQuote(plist)} > /dev/null`
+    + ` && sudo killall cfprefsd`
+    + ` && echo "Applied. Now quit ${target.label} completely and start it again."`;
 }
 
 /**
@@ -209,24 +214,38 @@ function buildCommand(os, policies, target) {
 }
 
 function buildRevertCommand(os, target) {
-  if (os === 'linux') return `sudo rm -f ${target.linuxDir}/${POLICY_FILE_NAME}`;
+  if (os === 'linux') {
+    const paths = [`${target.linuxDir}/${POLICY_FILE_NAME}`];
+    if (target.legacyLinuxDir) paths.push(`${target.legacyLinuxDir}/${POLICY_FILE_NAME}`);
+    return `sudo rm -f ${paths.join(' ')}`;
+  }
   if (os === 'macos') {
     return `sudo rm -f ${shellQuote(`/Library/Managed Preferences/${target.macDomain}.plist`)} && sudo killall cfprefsd`;
   }
   return `Remove-Item -Path '${target.winKey}' -Recurse -Force`;
 }
 
+/**
+ * Shows what else is already in the policy directory. Chrome merges every file
+ * there, so a stray one can quietly override this.
+ */
+function buildListCommand(os, target) {
+  if (os === 'linux') return `ls -la ${target.linuxDir}/ && head -n -0 ${target.linuxDir}/*.json`;
+  if (os === 'macos') return `ls -la "/Library/Managed Preferences/"`;
+  return `Get-ChildItem -Path '${target.winKey}' -Recurse | Format-List`;
+}
+
 const RUN_NOTES = {
   linux: [
     'Open a terminal.',
-    'Paste the whole block, including the last BLOCKX_POLICY line, and press Enter.',
+    'Paste the line and press Enter.',
     'Enter your password when sudo asks — this writes to /etc, which is why it needs one.',
     'Quit the browser completely and start it again.',
     'Check chrome://policy — the entries should be listed as Source: Platform.'
   ],
   macos: [
     'Open Terminal.',
-    'Paste the whole block and press Enter.',
+    'Paste the line and press Enter.',
     'Enter your password when sudo asks.',
     'Quit the browser completely (Cmd+Q) and start it again.',
     'Check chrome://policy — the entries should be listed as Source: Platform.'

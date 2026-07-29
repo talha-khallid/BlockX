@@ -190,6 +190,22 @@ python3 install.py</pre>
                 </div>
             </div>
 
+            <div class="help-card" id="neighbours-card">
+                <h2>Already have policy files there?</h2>
+                <p>Chrome reads <strong>every</strong> <code>.json</code> file in that directory and
+                   merges them. When two files set the same policy the files are read in alphabetical
+                   order and the later one wins, which is a coin toss you did not know you were making.
+                   Keeping one file avoids the whole problem.</p>
+                <p>See what is already there:</p>
+                <div class="cmd-block">
+                    <pre id="list-cmd"></pre>
+                    <button class="copy-btn" data-copy="list-cmd" type="button">Copy</button>
+                </div>
+                <p class="muted">If anything else in that list sets the same policies, delete it and
+                   let this one file cover everything. <code>chrome://policy</code> always shows what
+                   the browser actually ended up using.</p>
+            </div>
+
             <div class="help-card warn">
                 <h2>Read this before you run it</h2>
                 <ul class="warn-list">

@@ -494,13 +494,15 @@ function saveState() {
 }
 
 function setupNavigation() {
-    document.querySelectorAll('.nav-link').forEach(link => {
+    // Scoped to the section nav on purpose. The Help link shares the .nav-link
+    // look but is a real link, and this handler used to swallow its click.
+    document.querySelectorAll('.app-nav .nav-link').forEach(link => {
         link.addEventListener('click', (e) => {
-            e.preventDefault();
             const sectionId = link.getAttribute('data-section');
             if (!sections[sectionId]) return;
+            e.preventDefault();
 
-            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            document.querySelectorAll('.app-nav .nav-link').forEach(l => l.classList.remove('active'));
             link.classList.add('active');
 
             const titleEl = document.getElementById('page-title');

@@ -128,6 +128,9 @@ function render() {
     const area = document.getElementById('command-area');
     const hasAny = Object.keys(policies).length > 0;
 
+    const listCmd = document.getElementById('list-cmd');
+    if (listCmd) listCmd.textContent = buildListCommand(currentOs, target);
+
     empty?.classList.toggle('hidden', hasAny);
     area?.classList.toggle('hidden', !hasAny);
     if (!hasAny) return;
