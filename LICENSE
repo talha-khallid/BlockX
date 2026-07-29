@@ -1,140 +1,89 @@
-BlockX Non-Commercial License
-Version 1.0
+Required Notice: Copyright 2026 Talha Khalid (https://github.com/talha-khallid/BlockX)
 
-Copyright (c) 2026 Talha Khalid
+# PolyForm Noncommercial License 1.0.0
 
-Everyone is permitted to copy and distribute verbatim copies of this license
-document, but changing it is not allowed.
+<https://polyformproject.org/licenses/noncommercial/1.0.0>
 
+## Acceptance
 
-0. SUMMARY
+In order to get any license under these terms, you must agree to them as both strict obligations and conditions to all your licenses.
 
-    This summary is for convenience only and is not part of the license.
+## Copyright License
 
-      Free to use, study, modify and share, for anything except making money.
-      No attribution required. No warranty of any kind.
+The licensor grants you a copyright license for the software to do everything you might do with the software that would otherwise infringe the licensor's copyright in it for any permitted purpose.  However, you may only distribute the software according to [Distribution License](#distribution-license) and make changes or new works based on the software according to [Changes and New Works License](#changes-and-new-works-license).
 
-    The terms below are what actually apply.
+## Distribution License
 
+The licensor grants you an additional copyright license to distribute copies of the software.  Your license to distribute covers distributing the software with changes and new works permitted by [Changes and New Works License](#changes-and-new-works-license).
 
-1. DEFINITIONS
+## Notices
 
-    "The Software" means this program together with everything distributed
-    with it, including its source code, data files and documentation.
+You must ensure that anyone who gets a copy of any part of the software from you also gets a copy of these terms or the URL for them above, as well as copies of any plain-text lines beginning with `Required Notice:` that the licensor provided with the software.  For example:
 
-    "You" means any individual or organisation exercising the permissions
-    granted by this license.
+> Required Notice: Copyright Yoyodyne, Inc. (http://example.com)
 
-    "Non-Commercial Use" means use that is not primarily intended for, or
-    directed toward, commercial advantage or monetary compensation. Personal
-    use, private use, study, teaching, academic research, and use by a
-    non-profit organisation for its own purposes are Non-Commercial Use.
+## Changes and New Works License
 
-    "Commercial Use" means any use that is not Non-Commercial Use. It
-    includes, without limitation:
+The licensor grants you an additional copyright license to make changes and new works based on the software for any permitted purpose.
 
-      (a) selling, licensing, renting, leasing or sublicensing the Software
-          or any work derived from it, whether alone or as part of a larger
-          product;
+## Patent License
 
-      (b) charging any fee for the Software, for access to it, or for a
-          service whose value depends on it, including subscription,
-          hosting, installation and support fees;
+The licensor grants you a patent license for the software that covers patent claims the licensor can license, or becomes able to license, that you would infringe by using the software.
 
-      (c) distributing the Software in exchange for advertising revenue or
-          any other indirect payment; and
+## Noncommercial Purposes
 
-      (d) including the Software in a product or service that is offered
-          commercially, whether or not the Software is itself charged for.
+Any noncommercial purpose is a permitted purpose.
 
+## Personal Uses
 
-2. GRANT OF PERMISSIONS
+Personal use for research, experiment, and testing for the benefit of public knowledge, personal study, private entertainment, hobby projects, amateur pursuits, or religious observance, without any anticipated commercial application, is use for a permitted purpose.
 
-    Subject to the conditions in section 3, you are granted a worldwide,
-    royalty-free, non-exclusive licence to:
+## Noncommercial Organizations
 
-      (a) use and run the Software for any Non-Commercial Use, on any number
-          of devices;
+Use by any charitable organization, educational institution, public research organization, public safety or health organization, environmental protection organization, or government institution is use for a permitted purpose regardless of the source of funding or obligations resulting from the funding.
 
-      (b) study the Software and modify it in any way;
+## Fair Use
 
-      (c) reproduce the Software and any modified version of it; and
+You may have "fair use" rights for the software under the law. These terms do not limit them.
 
-      (d) distribute the Software and any modified version of it, in source
-          or compiled form, for Non-Commercial Use.
+## No Other Rights
 
+These terms do not allow you to sublicense or transfer any of your licenses to anyone else, or prevent the licensor from granting licenses to anyone else.  These terms do not imply any other licenses.
 
-3. CONDITIONS
+## Patent Defense
 
-    3.1  Non-Commercial Use only.
+If you make any written claim that the software infringes or contributes to infringement of any patent, your patent license for the software granted under these terms ends immediately. If your company makes such a claim, your patent license ends immediately for work on behalf of your company.
 
-         Commercial Use is not permitted under this license and is not
-         granted by it. No exception is implied by anything else in this
-         document.
+## Violations
 
-    3.2  This license travels with the Software.
+The first time you are notified in writing that you have violated any of these terms, or done anything with the software not covered by your licenses, your licenses can nonetheless continue if you come into full compliance with these terms, and take practical steps to correct past violations, within 32 days of receiving notice.  Otherwise, all your licenses end immediately.
 
-         If you distribute the Software or any modified version of it, you
-         must include a copy of this license with it, and you may not offer
-         it under terms that grant recipients more than this license grants
-         you.
+## No Liability
 
-    3.3  Attribution is not required.
+***As far as the law allows, the software comes as is, without any warranty or condition, and the licensor will not be liable to you for any damages arising out of these terms or the use or nature of the software, under any kind of legal claim.***
 
-         You are not obliged to keep any credit, attribution or copyright
-         notice inside the source files. You may modify or remove them.
-         This does not affect condition 3.2, which applies regardless.
+## Definitions
 
-    3.4  Third-party material is not covered by this license.
+The **licensor** is the individual or entity offering these terms, and the **software** is the software the licensor makes available under these terms.
 
-         Parts of the Software originate elsewhere and remain under the
-         terms of their own authors. See CREDITS.md. Nothing here grants any
-         permission over that material.
+**You** refers to the individual or entity agreeing to these terms.
 
-    3.5  No trademark rights are granted.
+**Your company** is any legal entity, sole proprietorship, or other kind of organization that you work for, plus all organizations that have control over, are under the control of, or are under common control with that organization.  **Control** means ownership of substantially all the assets of an entity, or the power to direct its management and policies by vote, contract, or otherwise.  Control can be direct or indirect.
 
-         This license does not grant permission to use the name of the
-         author, or the name "BlockX", to endorse or promote anything.
+**Your licenses** are all the licenses granted to you for the software under these terms.
 
+**Use** means anything you do with the software requiring one of your licenses.
 
-4. TERMINATION
+---
 
-    The permissions granted by this license end automatically if you breach
-    any of its conditions.
+## Note on third-party material
 
-    They are reinstated if you cure the breach within 30 days of becoming
-    aware of it, unless the copyright holder has already notified you of the
-    breach, in which case reinstatement is at the copyright holder's
-    discretion.
+Parts of this project come from elsewhere and stay under the terms of
+their own authors. The terms above apply to the work of the licensor and
+grant nothing over that material. See CREDITS.md.
 
+## Note on what this software does
 
-5. SEPARATE PERMISSION
-
-    Rights not granted here may be granted in writing by the copyright
-    holder. Ask.
-
-
-6. NO WARRANTY
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-    OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-
-    THE SOFTWARE FILTERS AND BLOCKS WEB CONTENT. NO FILTER IS COMPLETE OR
-    CORRECT. IT IS NOT OFFERED AS A SAFETY, SECURITY OR PARENTAL CONTROL
-    MEASURE AND MUST NOT BE RELIED UPON AS ONE.
-
-
-7. LIMITATION OF LIABILITY
-
-    IN NO EVENT SHALL THE AUTHOR OR COPYRIGHT HOLDER BE LIABLE FOR ANY
-    CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-    TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-    SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-
-8. SEVERABILITY
-
-    If any provision of this license is held unenforceable, that provision
-    shall be modified only to the extent necessary to make it enforceable,
-    and the remaining provisions shall stay in full effect.
+This software filters and blocks web content. No filter is complete or
+correct. It is not offered as a safety, security, or parental control
+measure, and must not be relied upon as one.

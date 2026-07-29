@@ -12,7 +12,7 @@ slow, deliberate, and follow you across every profile on your machine.
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-1900FF?style=flat-square)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![Chromium](https://img.shields.io/badge/Chrome%20·%20Brave%20·%20Edge%20·%20Vivaldi-supported-1900FF?style=flat-square)](#install)
 [![No dependencies](https://img.shields.io/badge/dependencies-none-1900FF?style=flat-square)](#architecture)
-[![License](https://img.shields.io/badge/license-Non--Commercial-1900FF?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-1900FF?style=flat-square)](LICENSE)
 
 <img src="assets/screenshots/warning.png" width="820" alt="The content warning over a blurred page, asking for a phrase to be retyped">
 
@@ -277,5 +277,12 @@ come from elsewhere. Full attributions in **[CREDITS.md](CREDITS.md)**.
 
 ## License
 
-Free for personal, educational and non-commercial use. It may not be sold or
-charged for. See **[LICENSE](LICENSE)**.
+[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)
+— see **[LICENSE](LICENSE)**.
+
+Free to use, study, modify and share for any noncommercial purpose, including
+personal use, study, hobby projects, and use by schools, charities and public
+institutions. Selling it, or building it into something sold, is not covered.
+
+Third-party material listed in [CREDITS.md](CREDITS.md) stays under the terms of
+its own authors.
