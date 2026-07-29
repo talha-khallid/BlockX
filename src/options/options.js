@@ -17,6 +17,8 @@ const LIST_BINDINGS = [
 ];
 
 let pendingRemovals = [];
+let pendingImport = null;
+let stagedImport = null;
 let countdownTimer = null;
 
 let state = {
@@ -75,8 +77,10 @@ async function init() {
     }
 
     // 4. Load scheduled removals and start their countdowns
+    setupImportOath();
     await refreshPendingRemovals();
     renderAllLists();
+    renderPendingImport();
     startCountdownTicker();
     watchExternalChanges();
     warnBeforeLeaving();
@@ -104,6 +108,7 @@ function refreshPendingRemovals() {
     return new Promise((resolve) => {
         chrome.runtime.sendMessage({ action: 'getPendingRemovals' }, (response) => {
             pendingRemovals = (response && response.pending) || [];
+            pendingImport = (response && response.pendingImport) || null;
             resolve();
         });
     });
@@ -149,11 +154,12 @@ function cancelRemoval(listId, stateKey, id) {
 function startCountdownTicker() {
     if (countdownTimer) clearInterval(countdownTimer);
     countdownTimer = setInterval(() => {
-        if (pendingRemovals.length === 0) return;
+        if (pendingRemovals.length === 0 && !pendingImport) return;
         document.querySelectorAll('.pending-timer').forEach(el => {
             const expiresAt = parseInt(el.getAttribute('data-expires-at'), 10);
             const remaining = expiresAt - Date.now();
-            const text = remaining > 0 ? formatCountdown(remaining) : 'removing…';
+            const elapsed = el.closest('.pending-import-banner') ? 'applying…' : 'removing…';
+            const text = remaining > 0 ? formatCountdown(remaining) : elapsed;
             // Only touch the DOM on a real change — the gateway's tamper observer
             // watches this subtree.
             if (el.textContent !== text) el.textContent = text;
@@ -182,13 +188,25 @@ function watchExternalChanges() {
             dirty = true;
         }
 
+        if (changes.PENDING_IMPORT) {
+            pendingImport = changes.PENDING_IMPORT.newValue || null;
+            renderPendingImport();
+        }
+
         if (dirty) renderAllLists();
+    });
+
+    // A deferred import rewrites every setting at once, so start clean.
+    chrome.runtime.onMessage.addListener((request) => {
+        if (request && request.action === 'importApplied') {
+            window.location.reload();
+        }
     });
 }
 
 function warnBeforeLeaving() {
     window.addEventListener('beforeunload', (e) => {
-        if (pendingRemovals.length === 0) return;
+        if (pendingRemovals.length === 0 && !pendingImport) return;
         e.preventDefault();
         e.returnValue = '';
     });
@@ -747,11 +765,14 @@ function exportSettings() {
 }
 
 function handleImport(event) {
-    const file = event.target.files[0];
+    const input = event.target;
+    const file = input.files[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = function(e) {
+        // Let the same file be picked again after a cancel.
+        input.value = '';
         try {
             const data = JSON.parse(e.target.result);
             if (!data || !data.settings) {
@@ -760,7 +781,7 @@ function handleImport(event) {
             }
 
             const imported = data.settings;
-            const updates = {
+            stagedImport = {
                 BLOCK_METHOD: imported.BLOCK_METHOD || "blocked_page",
                 CUSTOM_DOMAINS: Array.isArray(imported.CUSTOM_DOMAINS) ? imported.CUSTOM_DOMAINS : [],
                 CUSTOM_KEYWORDS: Array.isArray(imported.CUSTOM_KEYWORDS) ? imported.CUSTOM_KEYWORDS : [],
@@ -773,18 +794,94 @@ function handleImport(event) {
                 THEME: imported.THEME || "system"
             };
 
-            chrome.storage.local.set(updates, () => {
-                showToast("Settings imported successfully! Reloading...");
-                setTimeout(() => {
-                    window.location.reload();
-                }, 1500);
-            });
+            // An imported file can rewrite every list at once, so it never lands
+            // without passing the intention check first.
+            showImportOath();
         } catch (err) {
             showToast("Failed to parse backup file!");
             console.error("Import error:", err);
         }
     };
     reader.readAsText(file);
+}
+
+// ------------------------------------------------------------------
+// IMPORT INTENTION CHECK
+// ------------------------------------------------------------------
+
+function showImportOath() {
+    const overlay = document.getElementById('import-oath');
+    if (overlay) overlay.classList.remove('hidden');
+}
+
+function hideImportOath() {
+    const overlay = document.getElementById('import-oath');
+    if (overlay) overlay.classList.add('hidden');
+    stagedImport = null;
+}
+
+function setupImportOath() {
+    const yesBtn = document.getElementById('oath-yes');
+    const noBtn = document.getElementById('oath-no');
+    const cancelBtn = document.getElementById('oath-cancel');
+    const discardBtn = document.getElementById('cancel-import-btn');
+
+    if (yesBtn) {
+        yesBtn.addEventListener('click', () => {
+            if (!stagedImport) return hideImportOath();
+            chrome.runtime.sendMessage({ action: 'applyImportNow', settings: stagedImport }, () => {
+                hideImportOath();
+                showToast('Settings imported. Reloading…');
+                setTimeout(() => window.location.reload(), 1200);
+            });
+        });
+    }
+
+    if (noBtn) {
+        noBtn.addEventListener('click', () => {
+            if (!stagedImport) return hideImportOath();
+            chrome.runtime.sendMessage(
+                { action: 'schedulePendingImport', settings: stagedImport },
+                async (response) => {
+                    hideImportOath();
+                    if (!response || !response.record) {
+                        showToast('Could not schedule that import.');
+                        return;
+                    }
+                    await refreshPendingRemovals();
+                    renderPendingImport();
+                    showToast(`Import held. Keep this tab open for ${formatCountdown(REMOVAL_DELAY_MS)}.`);
+                }
+            );
+        });
+    }
+
+    if (cancelBtn) cancelBtn.addEventListener('click', hideImportOath);
+
+    if (discardBtn) {
+        discardBtn.addEventListener('click', () => {
+            chrome.runtime.sendMessage({ action: 'cancelPendingImport' }, async () => {
+                await refreshPendingRemovals();
+                renderPendingImport();
+                showToast('Import discarded — your current settings stay.');
+            });
+        });
+    }
+}
+
+function renderPendingImport() {
+    const banner = document.getElementById('pending-import-banner');
+    const timer = document.getElementById('import-timer');
+    if (!banner || !timer) return;
+
+    if (!pendingImport) {
+        banner.classList.add('hidden');
+        return;
+    }
+
+    banner.classList.remove('hidden');
+    timer.setAttribute('data-expires-at', pendingImport.expiresAt);
+    timer.textContent = formatCountdown(pendingImport.expiresAt - Date.now());
 }
 
 document.addEventListener('DOMContentLoaded', init);

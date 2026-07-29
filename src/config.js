@@ -53,6 +53,21 @@ const DELAYED_REMOVAL_LISTS = [
 ];
 
 const PENDING_ALARM_PREFIX = 'blockx-pending-removal:';
+const PENDING_IMPORT_ALARM_PREFIX = 'blockx-pending-import:';
+
+// Settings keys an imported backup is allowed to write.
+const IMPORTABLE_KEYS = [
+  'BLOCK_METHOD',
+  'CUSTOM_DOMAINS',
+  'CUSTOM_KEYWORDS',
+  'CUSTOM_PAGES',
+  'CUSTOM_EXACT_PAGES',
+  'CUSTOM_ALLOWED_DOMAINS',
+  'ACTIVE_GAME_INDEX',
+  'SECURITY_ENABLED',
+  'PASSWORD',
+  'THEME'
+];
 
 /**
  * Formats a millisecond duration as m:ss.

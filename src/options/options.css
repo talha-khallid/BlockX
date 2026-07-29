@@ -479,6 +479,63 @@ input:checked + .slider:before { transform: translateX(20px); }
 #gateway-unlock-btn:hover { transform: none; box-shadow: none; }
 .error-msg { color: #ef4444; font-size: 12px; font-weight: 600; margin-top: 16px; }
 
+/* Import intention check */
+.oath-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1100;
+    padding: 24px;
+}
+.oath-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-base);
+    border-radius: 20px;
+    box-shadow: var(--shadow-md);
+    padding: 36px;
+    max-width: 460px;
+    width: 100%;
+    text-align: center;
+}
+.oath-card h2 { font-size: 21px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 14px; }
+.oath-question { font-size: 15px; line-height: 1.6; color: var(--text-primary); margin-bottom: 10px; }
+.oath-note { font-size: 13px; color: var(--text-secondary); margin-bottom: 26px; }
+.oath-actions { display: flex; flex-direction: column; gap: 10px; }
+.oath-actions .btn { justify-content: center; width: 100%; }
+.oath-actions .btn:hover { transform: none; }
+.oath-cancel {
+    margin-top: 18px;
+    background: none;
+    border: none;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    text-decoration: underline;
+}
+.oath-cancel:hover { color: var(--text-secondary); }
+
+/* Held import banner */
+.pending-import-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+    padding: 16px 20px;
+    border: 1px solid var(--pending);
+    background: var(--pending-soft);
+    border-radius: var(--radius-md);
+}
+.pending-import-info .title { display: block; font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+.pending-import-info .desc { display: block; font-size: 13px; color: var(--text-secondary); }
+.pending-import-banner .pending-timer { font-size: 13px; }
+
 .toast-notification {
     position: fixed;
     bottom: 32px;

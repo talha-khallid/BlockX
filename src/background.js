@@ -100,6 +100,12 @@ async function cancelPendingRemoval(id) {
 }
 
 async function cancelPendingForTab(tabId) {
+  const pendingImport = await getPendingImport();
+  if (pendingImport && pendingImport.tabId === tabId) {
+    await clearPendingImport();
+    console.log('[BlockX] Dashboard left — voided the pending settings import.');
+  }
+
   const pending = await getPendingRemovals();
   const voided = pending.filter(p => p.tabId === tabId);
   if (voided.length === 0) return;
@@ -139,9 +145,102 @@ async function executePendingRemoval(id) {
   }
 }
 
+// ------------------------------------------------------------------
+// DEFERRED SETTINGS IMPORT
+// ------------------------------------------------------------------
+// An imported backup can rewrite every list at once, so it gets the same
+// cooling-off treatment unless the user affirms their intention.
+
+async function getPendingImport() {
+  const { PENDING_IMPORT } = await chrome.storage.local.get({ PENDING_IMPORT: null });
+  return PENDING_IMPORT;
+}
+
+async function clearPendingImport() {
+  const record = await getPendingImport();
+  if (!record) return;
+  await chrome.storage.local.remove('PENDING_IMPORT');
+  await chrome.alarms.clear(PENDING_IMPORT_ALARM_PREFIX + record.id);
+}
+
+// Only the known settings keys are ever written back, so a hand-edited file
+// cannot inject anything the dashboard does not manage.
+function sanitiseImport(settings) {
+  if (!settings || typeof settings !== 'object') return null;
+  const clean = {};
+  for (const key of IMPORTABLE_KEYS) {
+    if (settings[key] !== undefined) clean[key] = settings[key];
+  }
+  return Object.keys(clean).length > 0 ? clean : null;
+}
+
+async function applyImportNow(settings) {
+  const clean = sanitiseImport(settings);
+  if (!clean) return false;
+
+  // The lists are replaced wholesale, so any in-flight removal is moot.
+  const pending = await getPendingRemovals();
+  await Promise.all(pending.map(p => chrome.alarms.clear(PENDING_ALARM_PREFIX + p.id)));
+  await clearPendingImport();
+  await chrome.storage.local.set({ ...clean, PENDING_REMOVALS: [] });
+  return true;
+}
+
+async function schedulePendingImport(settings, tabId) {
+  const clean = sanitiseImport(settings);
+  if (!clean || typeof tabId !== 'number') return null;
+
+  await clearPendingImport();
+
+  const now = Date.now();
+  const record = {
+    id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
+    settings: clean,
+    tabId,
+    scheduledAt: now,
+    expiresAt: now + REMOVAL_DELAY_MS
+  };
+
+  await chrome.storage.local.set({ PENDING_IMPORT: record });
+  chrome.alarms.create(PENDING_IMPORT_ALARM_PREFIX + record.id, { when: record.expiresAt });
+  return record;
+}
+
+async function executePendingImport(id) {
+  const record = await getPendingImport();
+  if (!record || record.id !== id) return;
+
+  if (!(await isOwnerTabAlive(record.tabId))) {
+    await clearPendingImport();
+    return;
+  }
+
+  if (Date.now() < record.expiresAt) {
+    chrome.alarms.create(PENDING_IMPORT_ALARM_PREFIX + id, { when: record.expiresAt });
+    return;
+  }
+
+  await applyImportNow(record.settings);
+  console.log('[BlockX] Cooling-off elapsed — imported settings applied.');
+
+  // Only extension pages receive this; the dashboard reloads onto the new state.
+  chrome.runtime.sendMessage({ action: 'importApplied' }).catch(() => {});
+}
+
 // Drops records whose dashboard tab is gone and re-arms the ones that survived.
 // After a browser restart every tab id is new, so everything pending is voided.
 async function reconcilePendingRemovals() {
+  const pendingImport = await getPendingImport();
+  if (pendingImport) {
+    if (!(await isOwnerTabAlive(pendingImport.tabId))) {
+      await clearPendingImport();
+    } else if (Date.now() >= pendingImport.expiresAt) {
+      await executePendingImport(pendingImport.id);
+    } else {
+      chrome.alarms.create(PENDING_IMPORT_ALARM_PREFIX + pendingImport.id, { when: pendingImport.expiresAt });
+    }
+  }
+
   const pending = await getPendingRemovals();
   if (pending.length === 0) return;
 
@@ -168,6 +267,8 @@ async function reconcilePendingRemovals() {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name.startsWith(PENDING_ALARM_PREFIX)) {
     executePendingRemoval(alarm.name.slice(PENDING_ALARM_PREFIX.length));
+  } else if (alarm.name.startsWith(PENDING_IMPORT_ALARM_PREFIX)) {
+    executePendingImport(alarm.name.slice(PENDING_IMPORT_ALARM_PREFIX.length));
   }
 });
 
@@ -386,8 +487,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'getPendingRemovals') {
     reconcilePendingRemovals()
-      .then(getPendingRemovals)
-      .then((pending) => sendResponse({ pending }));
+      .then(async () => sendResponse({
+        pending: await getPendingRemovals(),
+        pendingImport: await getPendingImport()
+      }));
+    return true;
+  }
+
+  if (request.action === 'applyImportNow') {
+    applyImportNow(request.settings).then((ok) => sendResponse({ ok }));
+    return true;
+  }
+
+  if (request.action === 'schedulePendingImport') {
+    schedulePendingImport(request.settings, sender.tab?.id)
+      .then((record) => sendResponse({ record }));
+    return true;
+  }
+
+  if (request.action === 'cancelPendingImport') {
+    clearPendingImport().then(() => sendResponse({ ok: true }));
     return true;
   }
 

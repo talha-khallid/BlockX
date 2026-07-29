@@ -197,6 +197,14 @@
                                 </div>
                             </div>
                         </div>
+
+                        <div id="pending-import-banner" class="pending-import-banner hidden">
+                            <div class="pending-import-info">
+                                <span class="title">Imported settings are on hold</span>
+                                <span class="desc">They apply in <span class="pending-timer" id="import-timer" data-expires-at="0">12:00</span> — keep this tab open, or they are discarded.</span>
+                            </div>
+                            <button id="cancel-import-btn" class="tag-keep" type="button">Discard import</button>
+                        </div>
                     </div>
                 </div>
 
@@ -353,6 +361,24 @@
                     <button id="gateway-unlock-btn" class="btn btn-primary">Unlock</button>
                 </div>
                 <div id="gateway-error" class="error-msg hidden">Incorrect password.</div>
+            </div>
+        </div>
+
+        <!-- Import Intention Check -->
+        <div id="import-oath" class="oath-overlay hidden">
+            <div class="oath-card">
+                <h2>Confirm your intention</h2>
+                <p class="oath-question">
+                    Do you swear by Allah that you are not importing these settings
+                    to make something haram easier to reach?
+                </p>
+                <p class="oath-note">No one else is checking this. It is between you and Allah.</p>
+
+                <div class="oath-actions">
+                    <button id="oath-yes" class="btn btn-primary" type="button">Yes, I swear — apply now</button>
+                    <button id="oath-no" class="btn btn-secondary" type="button">No — apply after 12 minutes</button>
+                </div>
+                <button id="oath-cancel" class="oath-cancel" type="button">Cancel import</button>
             </div>
         </div>
     </div>
