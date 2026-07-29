@@ -1,72 +1,132 @@
 [
   {
     "id": 1,
-    "priority": 1,
+    "priority": 1000,
     "action": {
       "type": "redirect",
       "redirect": {
-        "transform": { "queryTransform": { "addOrReplaceParams": [{ "key": "safe", "value": "active" }] } }
+        "transform": {
+          "queryTransform": {
+            "addOrReplaceParams": [
+              {
+                "key": "safe",
+                "value": "active"
+              }
+            ]
+          }
+        }
       }
     },
     "condition": {
       "regexFilter": "^https?://([a-z0-9-]+\\.)*google\\.[a-z]{2,6}(\\.[a-z]{2,3})?/search",
-      "resourceTypes": ["main_frame", "sub_frame"]
+      "resourceTypes": [
+        "main_frame",
+        "sub_frame"
+      ]
     }
   },
   {
     "id": 2,
-    "priority": 1,
+    "priority": 1000,
     "action": {
       "type": "redirect",
       "redirect": {
-        "transform": { "queryTransform": { "addOrReplaceParams": [{ "key": "adlt", "value": "strict" }] } }
+        "transform": {
+          "queryTransform": {
+            "addOrReplaceParams": [
+              {
+                "key": "adlt",
+                "value": "strict"
+              }
+            ]
+          }
+        }
       }
     },
     "condition": {
       "regexFilter": "^https?://(www\\.)?bing\\.com/(images/|videos/|news/)?search",
-      "resourceTypes": ["main_frame", "sub_frame"]
+      "resourceTypes": [
+        "main_frame",
+        "sub_frame"
+      ]
     }
   },
   {
     "id": 3,
-    "priority": 1,
+    "priority": 1000,
     "action": {
       "type": "redirect",
       "redirect": {
-        "transform": { "queryTransform": { "addOrReplaceParams": [{ "key": "kp", "value": "1" }] } }
+        "transform": {
+          "queryTransform": {
+            "addOrReplaceParams": [
+              {
+                "key": "kp",
+                "value": "1"
+              }
+            ]
+          }
+        }
       }
     },
     "condition": {
       "urlFilter": "||duckduckgo.com/",
-      "resourceTypes": ["main_frame", "sub_frame"]
+      "resourceTypes": [
+        "main_frame",
+        "sub_frame"
+      ]
     }
   },
   {
     "id": 4,
-    "priority": 1,
+    "priority": 1000,
     "action": {
       "type": "redirect",
       "redirect": {
-        "transform": { "queryTransform": { "addOrReplaceParams": [{ "key": "vm", "value": "r" }] } }
+        "transform": {
+          "queryTransform": {
+            "addOrReplaceParams": [
+              {
+                "key": "vm",
+                "value": "r"
+              }
+            ]
+          }
+        }
       }
     },
     "condition": {
       "regexFilter": "^https?://([a-z0-9-]+\\.)*search\\.yahoo\\.[a-z]{2,6}(\\.[a-z]{2,3})?/search",
-      "resourceTypes": ["main_frame", "sub_frame"]
+      "resourceTypes": [
+        "main_frame",
+        "sub_frame"
+      ]
     }
   },
   {
     "id": 5,
-    "priority": 1,
+    "priority": 1000,
     "action": {
       "type": "redirect",
       "redirect": {
-        "transform": { "queryTransform": { "addOrReplaceParams": [{ "key": "safesearch", "value": "strict" }] } }
+        "transform": {
+          "queryTransform": {
+            "addOrReplaceParams": [
+              {
+                "key": "safesearch",
+                "value": "strict"
+              }
+            ]
+          }
+        }
       }
     },
     "condition": {
       "regexFilter": "^https?://search\\.brave\\.com/search",
-      "resourceTypes": ["main_frame", "sub_frame"]
+      "resourceTypes": [
+        "main_frame",
+        "sub_frame"
+      ]
     }
   }
 ]

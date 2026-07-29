@@ -12,6 +12,13 @@ const DYNAMIC_RULE_LIMIT = chrome.declarativeNetRequest.MAX_NUMBER_OF_DYNAMIC_AN
 // start and every poll that it is still on, and switches it back if not.
 const SAFESEARCH_RULESET = 'ruleset_safesearch';
 
+// SafeSearch outranks everything this extension emits, including the allow
+// rules that back the whitelist. Chrome resolves declarativeNetRequest matches
+// by priority first, so an allow rule for an allowed site would otherwise
+// cancel the SafeSearch redirect on it — which is exactly the case that
+// matters, since a search engine is the sort of site people allow.
+const SAFESEARCH_PRIORITY = 1000;
+
 async function ensureSafeSearchEnabled() {
   try {
     const enabled = await chrome.declarativeNetRequest.getEnabledRulesets();
