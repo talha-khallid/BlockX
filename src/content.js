@@ -523,9 +523,22 @@
     showBtn.type = 'button';
     showBtn.textContent = 'Yes, show it';
 
+    // Plenty of sites bind bare letters as shortcuts and guard them with a
+    // check on the event target. Our box sits in a shadow root, so from the
+    // page's side the target is retargeted to the host div — not a text field
+    // — and the guard passes. The page then swallows the letter, which is why
+    // keys like b and n went missing while typing. Keep our own keystrokes to
+    // ourselves: capture on window runs before any page listener.
+    const keepKeys = (event) => {
+      if (event.composedPath().includes(host)) event.stopPropagation();
+    };
+    const KEY_EVENTS = ['keydown', 'keypress', 'keyup'];
+    KEY_EVENTS.forEach(type => window.addEventListener(type, keepKeys, true));
+
     const reveal = () => {
       scanAcknowledged = true;
       scanPrompted = false;
+      KEY_EVENTS.forEach(type => window.removeEventListener(type, keepKeys, true));
       if (host.parentNode) host.parentNode.removeChild(host);
       thawMedia();
       dropBarrier();
