@@ -20,46 +20,23 @@ function sendMessage(payload) {
     return new Promise((resolve) => chrome.runtime.sendMessage(payload, resolve));
 }
 
-/**
- * The tab may be sitting on the block page or a game by now, so the host to
- * unlock comes from what the service worker recorded for this tab. Falling
- * back to the tab's own host covers a page the content script stopped.
- */
-function resolveUnlockTarget(context) {
-    if (!currentTab || !currentTab.url) return null;
-
-    const isOurPage = currentTab.url.startsWith(chrome.runtime.getURL(''));
-    if (isOurPage) return context.blocked || null;
-
-    try {
-        const url = new URL(currentTab.url);
-        if (!/^https?:$/.test(url.protocol)) return null;
-        return { host: url.hostname, url: currentTab.url };
-    } catch {
-        return null;
-    }
-}
-
 async function setupUnlock() {
     if (!currentTab) return;
 
-    const context = await sendMessage({ action: 'getUnlockContext', tabId: currentTab.id });
-    if (!context) return;
-    unlockContext = context;
+    const context = await sendMessage({
+        action: 'getUnlockContext',
+        tabId: currentTab.id,
+        url: currentTab.url || ''
+    });
+    if (!context || !context.target) return;
 
-    const target = resolveUnlockTarget(context);
-    const active = (context.grants || []).find(g => target && g.host === target.host.replace(/^www\./, ''));
-
-    if (active) {
-        showActivePass(active, target);
+    if (context.active) {
+        showActivePass(context.active);
         return;
     }
+    if (!(context.phrase || '').trim()) return;
 
-    // Only offer this where something is actually blocked.
-    const onOurPage = currentTab.url && currentTab.url.startsWith(chrome.runtime.getURL(''));
-    if (!onOurPage || !target) return;
-
-    showUnlockPanel(context, target);
+    showUnlockPanel(context, context.target);
 }
 
 function showUnlockPanel(context, target) {
@@ -75,8 +52,11 @@ function showUnlockPanel(context, target) {
     const phrase = (context.phrase || '').trim();
     if (!phrase) return;
 
+    // The unlock is the only thing worth showing on a blocked page.
     panel.classList.remove('hidden');
     document.getElementById('context-action')?.classList.add('hidden');
+    document.getElementById('toggle-quick-add')?.classList.add('hidden');
+    document.getElementById('quick-add-panel')?.classList.add('hidden');
 
     if (hostEl) hostEl.textContent = target.host;
     if (phraseEl) phraseEl.textContent = phrase;
@@ -113,7 +93,7 @@ function showUnlockPanel(context, target) {
     input.focus();
 }
 
-function showActivePass(grant, target) {
+function showActivePass(grant) {
     const panel = document.getElementById('pass-panel');
     const detail = document.getElementById('pass-detail');
     const endBtn = document.getElementById('pass-end-btn');
