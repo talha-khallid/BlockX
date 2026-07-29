@@ -213,16 +213,29 @@ python3 install.py</pre>
                    and never again. A file written after that point is invisible to the running browser,
                    however many windows you close and reopen, because the sandbox from the original
                    launch is still alive.</p>
-                <p>So on Flatpak, after writing the policy:</p>
+                <p>So on Flatpak, quit the browser <strong>properly</strong> first — its own Quit,
+                   or closing every window and letting it exit — and start it again. That is usually
+                   enough, and it is the only way that keeps your settings.</p>
+                <p>Only if it still has not taken effect, force it:</p>
                 <div class="cmd-block">
                     <pre id="flatpak-cmd">flatpak kill com.google.Chrome</pre>
                     <button class="copy-btn" data-copy="flatpak-cmd" type="button">Copy</button>
                 </div>
-                <p class="muted">Then start it again. Substitute the app id for your browser —
-                   <code>com.brave.Browser</code>, <code>org.chromium.Chromium</code>. If you are not
-                   using Flatpak, ignore this card entirely.</p>
-                <p class="muted">The same launcher never clears symlinks for files you delete, so an
-                   old policy can appear to linger until the next full restart too.</p>
+                <p class="muted">Substitute the app id for your browser — <code>com.brave.Browser</code>,
+                   <code>org.chromium.Chromium</code>. If you are not using Flatpak, ignore this card.</p>
+            </div>
+
+            <div class="help-card warn">
+                <h2>Killing the browser costs you settings</h2>
+                <p><code>flatpak kill</code>, <code>pkill</code> and Force Quit all stop the browser
+                   dead. Chrome writes its preferences periodically and on a clean exit, so anything
+                   changed since the last write is simply lost.</p>
+                <p><strong>Developer Mode is one of those preferences.</strong> Lose it and every
+                   extension you loaded from a folder is switched off the next time the browser
+                   starts — which looks exactly like the extension having uninstalled itself.</p>
+                <p class="muted">If that happens: open <code>chrome://extensions</code>, turn
+                   Developer Mode back on, load the folder again, and then quit the browser properly
+                   so the setting is written to disk.</p>
             </div>
 
             <div class="help-card warn">
