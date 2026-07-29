@@ -4,11 +4,15 @@
   // 🛑 1. INSTANT SYNCHRONOUS BARRIER (THE FLASH FIX)
   // Hide the page immediately BEFORE any network requests or DOM parsing
   // ------------------------------------------------------------------
-  // The opaque variant is used while loading. The prompt variant drops the
-  // opacity so the warning overlay can be made visible on top of a still
-  // hidden page — opacity on <html> would take the overlay down with it.
+  // Loading state: nothing is painted at all.
   const BARRIER_OPAQUE = 'html { visibility: hidden !important; opacity: 0 !important; background: #ffffff !important; }';
-  const BARRIER_PROMPT = 'html { visibility: hidden !important; background: #ffffff !important; }';
+
+  // Prompt state: the page paints again so it can sit behind the frosted
+  // overlay, but it is frozen — no scrolling, no clicks, no text selection.
+  const BARRIER_FROZEN = `
+    html { overflow: hidden !important; }
+    body { pointer-events: none !important; user-select: none !important; }
+  `;
 
   const securityBarrier = document.createElement('style');
   securityBarrier.id = 'blockx-security-barrier';
@@ -228,45 +232,166 @@
     }, SCAN_THROTTLE_MS);
   }
 
+  const PROMPT_STYLES = `
+    :host { all: initial; }
+
+    .wrap {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+
+      /* The page stays behind this, blurred past the point of being readable.
+         The 64px radius is what destroys detail; the tint only sets the mood,
+         so it stays light enough that you can tell a page is still there. */
+      -webkit-backdrop-filter: blur(64px) saturate(0.4) brightness(0.72);
+      backdrop-filter: blur(64px) saturate(0.4) brightness(0.72);
+      background: rgba(9, 9, 11, 0.55);
+      animation: blockx-fade 220ms ease-out;
+    }
+
+    .card {
+      box-sizing: border-box;
+      width: 100%;
+      max-width: 440px;
+      padding: 40px 36px;
+      text-align: center;
+      border-radius: 20px;
+      border: 1px solid #3f3f46;
+      background: #1c1c1c;
+      color: #f9fafb;
+      box-shadow: 0 32px 64px -12px rgba(0, 0, 0, 0.7);
+      animation: blockx-rise 260ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .mark {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 22px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(25, 0, 255, 0.14);
+      color: #8b7cff;
+    }
+    .mark svg { width: 26px; height: 26px; }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: inherit;
+    }
+
+    p {
+      margin: 0 0 30px;
+      font-size: 15px;
+      line-height: 1.6;
+      color: #a1a1aa;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    button {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 13px 20px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    button:focus-visible { outline: 2px solid #1900FF; outline-offset: 2px; }
+
+    .leave { background: #f9fafb; color: #111827; margin-bottom: 10px; }
+    .leave:hover { background: #ffffff; }
+
+    .show { background: transparent; color: #71717a; border-color: #3f3f46; }
+    .show:hover { color: #f9fafb; border-color: #71717a; }
+
+    /* Light dashboard theme */
+    :host([data-theme="light"]) .wrap {
+      background: rgba(249, 250, 251, 0.72);
+      -webkit-backdrop-filter: blur(64px) saturate(0.35) brightness(1.15);
+      backdrop-filter: blur(64px) saturate(0.35) brightness(1.15);
+    }
+    :host([data-theme="light"]) .card {
+      background: #ffffff;
+      border-color: #e5e7eb;
+      color: #111827;
+      box-shadow: 0 32px 64px -12px rgba(0, 0, 0, 0.18);
+    }
+    :host([data-theme="light"]) .mark { background: rgba(25, 0, 255, 0.06); color: #1900FF; }
+    :host([data-theme="light"]) p { color: #4b5563; }
+    :host([data-theme="light"]) .leave { background: #111827; color: #ffffff; }
+    :host([data-theme="light"]) .leave:hover { background: #000000; }
+    :host([data-theme="light"]) .show { color: #6b7280; border-color: #e5e7eb; }
+    :host([data-theme="light"]) .show:hover { color: #111827; border-color: #9ca3af; }
+
+    @keyframes blockx-fade { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes blockx-rise {
+      from { opacity: 0; transform: translateY(12px) scale(0.97); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .wrap, .card { animation: none; }
+    }
+  `;
+
+  // Audio keeps playing behind a blur, so anything already running is stopped.
+  const mutedMedia = [];
+  function freezeMedia() {
+    for (const el of document.querySelectorAll('video, audio')) {
+      mutedMedia.push([el, el.muted]);
+      el.muted = true;
+      try { el.pause(); } catch { /* ignore */ }
+    }
+  }
+  function thawMedia() {
+    for (const [el, wasMuted] of mutedMedia) el.muted = wasMuted;
+    mutedMedia.length = 0;
+  }
+
+  function resolveTheme() {
+    const theme = CONFIG.THEME || 'system';
+    if (theme === 'light' || theme === 'dark') return theme;
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+      ? 'light'
+      : 'dark';
+  }
+
   /**
    * Renders the warning inside a closed shadow root so page CSS cannot reach
-   * it, and keeps the page itself hidden behind the barrier while it is up.
+   * it. The host is attached to <html> rather than <body> so the page itself
+   * sits behind the overlay's backdrop-filter and gets blurred out.
    */
   function showScanPrompt() {
     scanPrompted = true;
-    raiseBarrier(BARRIER_PROMPT);
 
     const host = document.createElement('div');
     host.id = 'blockx-scan-prompt';
-    host.style.setProperty('visibility', 'visible', 'important');
+    host.setAttribute('data-theme', resolveTheme());
+    host.style.setProperty('all', 'initial', 'important');
     host.style.setProperty('position', 'fixed', 'important');
     host.style.setProperty('inset', '0', 'important');
     host.style.setProperty('z-index', '2147483647', 'important');
+    host.style.setProperty('visibility', 'visible', 'important');
 
     const root = host.attachShadow({ mode: 'closed' });
+
     const style = document.createElement('style');
-    style.textContent = `
-      .wrap {
-        position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-        background: #0f0f0f; padding: 24px;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      }
-      .card {
-        background: #1c1c1c; color: #f9fafb; border: 1px solid #3f3f46; border-radius: 20px;
-        padding: 40px; max-width: 460px; width: 100%; text-align: center;
-      }
-      .mark { font-size: 40px; line-height: 1; margin-bottom: 18px; }
-      h2 { font-size: 20px; font-weight: 700; margin: 0 0 14px; letter-spacing: -0.02em; }
-      p { font-size: 15px; line-height: 1.6; color: #d4d4d8; margin: 0 0 28px; white-space: pre-wrap; }
-      button {
-        display: block; width: 100%; font-family: inherit; font-size: 14px; font-weight: 600;
-        padding: 13px 20px; border-radius: 10px; cursor: pointer; border: 1px solid transparent;
-      }
-      .leave { background: #f9fafb; color: #111827; margin-bottom: 10px; }
-      .leave:hover { background: #ffffff; }
-      .show { background: transparent; color: #a1a1aa; border-color: #3f3f46; }
-      .show:hover { color: #f9fafb; border-color: #71717a; }
-    `;
+    style.textContent = PROMPT_STYLES;
 
     const wrap = document.createElement('div');
     wrap.className = 'wrap';
@@ -276,7 +401,17 @@
 
     const mark = document.createElement('div');
     mark.className = 'mark';
-    mark.textContent = '🛡️';
+    const shield = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    shield.setAttribute('viewBox', '0 0 24 24');
+    shield.setAttribute('fill', 'none');
+    shield.setAttribute('stroke', 'currentColor');
+    shield.setAttribute('stroke-width', '2');
+    shield.setAttribute('stroke-linecap', 'round');
+    shield.setAttribute('stroke-linejoin', 'round');
+    const shieldPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    shieldPath.setAttribute('d', 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z');
+    shield.appendChild(shieldPath);
+    mark.appendChild(shield);
 
     const heading = document.createElement('h2');
     heading.textContent = 'Explicit content detected';
@@ -287,6 +422,7 @@
 
     const leaveBtn = document.createElement('button');
     leaveBtn.className = 'leave';
+    leaveBtn.type = 'button';
     leaveBtn.textContent = 'No, close this tab';
     leaveBtn.addEventListener('click', () => {
       chrome.runtime.sendMessage({ action: 'closeTab' });
@@ -294,11 +430,13 @@
 
     const showBtn = document.createElement('button');
     showBtn.className = 'show';
+    showBtn.type = 'button';
     showBtn.textContent = 'Yes, show it';
     showBtn.addEventListener('click', () => {
       scanAcknowledged = true;
       scanPrompted = false;
       if (host.parentNode) host.parentNode.removeChild(host);
+      thawMedia();
       dropBarrier();
     });
 
@@ -311,7 +449,11 @@
     root.appendChild(style);
     root.appendChild(wrap);
 
-    (document.body || document.documentElement).appendChild(host);
+    // Order matters: the overlay is in place before the page is allowed to
+    // paint, so the content is never briefly visible unblurred.
+    document.documentElement.appendChild(host);
+    raiseBarrier(BARRIER_FROZEN);
+    freezeMedia();
     leaveBtn.focus();
   }
 

@@ -124,6 +124,7 @@ async function loadConfig() {
       CUSTOM_SCAN_EXCLUDED: [],
       SCAN_MESSAGE: CONFIG.SCAN_MESSAGE,
       SCAN_SENSITIVITY: 2,
+      THEME: 'system',
       ACTIVE_GAME_INDEX: -1
     }, (items) => {
       CONFIG.BLOCK_METHOD = items.BLOCK_METHOD;
@@ -136,6 +137,7 @@ async function loadConfig() {
       CONFIG.SCAN_EXCLUDED = items.CUSTOM_SCAN_EXCLUDED;
       CONFIG.SCAN_MESSAGE = items.SCAN_MESSAGE;
       CONFIG.SCAN_SENSITIVITY = items.SCAN_SENSITIVITY;
+      CONFIG.THEME = items.THEME;
       CONFIG.ACTIVE_GAME_INDEX = items.ACTIVE_GAME_INDEX;
       resolve(CONFIG);
     });
