@@ -5,6 +5,7 @@ const sections = {
     lists: { title: "Domain Management", subtitle: "Manage the database of restricted hostnames." },
     keywords: { title: "Content Filtering", subtitle: "Define patterns to block based on page content." },
     pages: { title: "Page Link Restriction", subtitle: "Filter traffic to specific URLs and paths." },
+    scanning: { title: "Content Scanning", subtitle: "Catch explicit pages on sites that are not on any list." },
     security: { title: "Security Protection", subtitle: "Secure your configuration with a dashboard password." }
 };
 
@@ -13,10 +14,11 @@ const LIST_BINDINGS = [
     { inputId: 'keyword-input', btnId: 'add-keyword-btn', listId: 'keyword-list', stateKey: 'CUSTOM_KEYWORDS' },
     { inputId: 'page-input', btnId: 'add-page-btn', listId: 'page-list', stateKey: 'CUSTOM_PAGES' },
     { inputId: 'exact-page-input', btnId: 'add-exact-page-btn', listId: 'exact-page-list', stateKey: 'CUSTOM_EXACT_PAGES' },
-    { inputId: 'allowed-domain-input', btnId: 'add-allowed-domain-btn', listId: 'allowed-domain-list', stateKey: 'CUSTOM_ALLOWED_DOMAINS' }
+    { inputId: 'allowed-domain-input', btnId: 'add-allowed-domain-btn', listId: 'allowed-domain-list', stateKey: 'CUSTOM_ALLOWED_DOMAINS' },
+    { inputId: 'scan-excluded-input', btnId: 'add-scan-excluded-btn', listId: 'scan-excluded-list', stateKey: 'CUSTOM_SCAN_EXCLUDED' }
 ];
 
-let pendingRemovals = [];
+let pendingChanges = [];
 let pendingImport = null;
 let stagedImport = null;
 let countdownTimer = null;
@@ -29,6 +31,9 @@ let state = {
     CUSTOM_PAGES: [],
     CUSTOM_EXACT_PAGES: [],
     CUSTOM_ALLOWED_DOMAINS: [],
+    CUSTOM_SCAN_EXCLUDED: [],
+    SCAN_MESSAGE: '',
+    SCAN_SENSITIVITY: 2,
     ACTIVE_GAME_INDEX: -1,
     SECURITY_ENABLED: false,
     PASSWORD: '',
@@ -77,8 +82,9 @@ async function init() {
     }
 
     // 4. Load scheduled removals and start their countdowns
+    setupScanSettings();
     setupImportOath();
-    await refreshPendingRemovals();
+    await refreshPendingState();
     renderAllLists();
     renderPendingImport();
     startCountdownTicker();
@@ -100,14 +106,49 @@ function renderAllLists() {
     LIST_BINDINGS.forEach(b => renderList(b.listId, b.stateKey));
 }
 
-function pendingFor(stateKey, value) {
-    return pendingRemovals.find(p => p.listKey === stateKey && p.value === value) || null;
+function setupScanSettings() {
+    const messageInput = document.getElementById('scan-message');
+    const saveBtn = document.getElementById('save-scan-message-btn');
+
+    if (messageInput) {
+        messageInput.value = state.SCAN_MESSAGE || '';
+
+        const saveMessage = () => {
+            const value = messageInput.value.trim();
+            if (value === (state.SCAN_MESSAGE || '')) return;
+            state.SCAN_MESSAGE = value;
+            saveState();
+        };
+
+        messageInput.addEventListener('blur', saveMessage);
+        if (saveBtn) {
+            saveBtn.addEventListener('click', () => {
+                saveMessage();
+                showToast('Warning message saved.');
+            });
+        }
+    }
+
+    const sensitivity = String(state.SCAN_SENSITIVITY || 2);
+    const selected = document.querySelector(`input[name="scanSensitivity"][value="${sensitivity}"]`);
+    if (selected) selected.checked = true;
+
+    document.querySelectorAll('input[name="scanSensitivity"]').forEach(input => {
+        input.addEventListener('change', () => {
+            state.SCAN_SENSITIVITY = parseInt(input.value, 10);
+            saveState();
+        });
+    });
 }
 
-function refreshPendingRemovals() {
+function pendingFor(stateKey, value) {
+    return pendingChanges.find(p => p.listKey === stateKey && p.value === value) || null;
+}
+
+function refreshPendingState() {
     return new Promise((resolve) => {
-        chrome.runtime.sendMessage({ action: 'getPendingRemovals' }, (response) => {
-            pendingRemovals = (response && response.pending) || [];
+        chrome.runtime.sendMessage({ action: 'getPendingChanges' }, (response) => {
+            pendingChanges = (response && response.pending) || [];
             pendingImport = (response && response.pendingImport) || null;
             resolve();
         });
@@ -115,50 +156,55 @@ function refreshPendingRemovals() {
 }
 
 /**
- * Blocklist entries go through a cooling-off period before they actually leave
- * the list. Whitelist entries are removed straight away — that only ever
- * tightens protection.
+ * Whichever direction weakens protection waits out the cooling-off period;
+ * the opposite direction applies straight away. Taking an entry OFF a
+ * blocklist weakens it, putting one ON the scan exclusions weakens it.
  */
-function requestRemoval(listId, stateKey, item) {
-    if (!DELAYED_REMOVAL_LISTS.includes(stateKey)) {
-        const index = state[stateKey].indexOf(item);
-        if (index === -1) return;
-        state[stateKey].splice(index, 1);
-        renderList(listId, stateKey);
-        saveState();
-        return;
-    }
+function requestChange(listId, stateKey, item, op) {
+    if (!isDelayed(stateKey, op)) return false;
 
     chrome.runtime.sendMessage(
-        { action: 'schedulePendingRemoval', listKey: stateKey, value: item },
+        { action: 'schedulePendingChange', listKey: stateKey, value: item, op },
         async (response) => {
             if (!response || !response.record) {
-                showToast('Could not schedule that removal.');
+                showToast('Could not schedule that change.');
                 return;
             }
-            await refreshPendingRemovals();
+            await refreshPendingState();
             renderList(listId, stateKey);
-            showToast(`Removal scheduled. Keep this tab open for ${formatCountdown(REMOVAL_DELAY_MS)}.`);
+            showToast(`Scheduled. Keep this tab open for ${formatCountdown(REMOVAL_DELAY_MS)}.`);
         }
     );
+    return true;
+}
+
+function requestRemoval(listId, stateKey, item) {
+    if (requestChange(listId, stateKey, item, 'remove')) return;
+
+    const index = state[stateKey].indexOf(item);
+    if (index === -1) return;
+    state[stateKey].splice(index, 1);
+    renderList(listId, stateKey);
+    saveState();
 }
 
 function cancelRemoval(listId, stateKey, id) {
-    chrome.runtime.sendMessage({ action: 'cancelPendingRemoval', id }, async () => {
-        await refreshPendingRemovals();
+    chrome.runtime.sendMessage({ action: 'cancelPendingChange', id }, async () => {
+        await refreshPendingState();
         renderList(listId, stateKey);
-        showToast('Removal cancelled — the entry stays blocked.');
+        showToast('Cancelled — nothing changed.');
     });
 }
 
 function startCountdownTicker() {
     if (countdownTimer) clearInterval(countdownTimer);
     countdownTimer = setInterval(() => {
-        if (pendingRemovals.length === 0 && !pendingImport) return;
+        if (pendingChanges.length === 0 && !pendingImport) return;
         document.querySelectorAll('.pending-timer').forEach(el => {
             const expiresAt = parseInt(el.getAttribute('data-expires-at'), 10);
             const remaining = expiresAt - Date.now();
-            const elapsed = el.closest('.pending-import-banner') ? 'applying…' : 'removing…';
+            const row = el.closest('.pending-import-banner, .pending-add');
+            const elapsed = row ? 'applying…' : 'removing…';
             const text = remaining > 0 ? formatCountdown(remaining) : elapsed;
             // Only touch the DOM on a real change — the gateway's tamper observer
             // watches this subtree.
@@ -183,8 +229,8 @@ function watchExternalChanges() {
             }
         });
 
-        if (changes.PENDING_REMOVALS) {
-            pendingRemovals = changes.PENDING_REMOVALS.newValue || [];
+        if (changes.PENDING_CHANGES) {
+            pendingChanges = changes.PENDING_CHANGES.newValue || [];
             dirty = true;
         }
 
@@ -206,7 +252,7 @@ function watchExternalChanges() {
 
 function warnBeforeLeaving() {
     window.addEventListener('beforeunload', (e) => {
-        if (pendingRemovals.length === 0 && !pendingImport) return;
+        if (pendingChanges.length === 0 && !pendingImport) return;
         e.preventDefault();
         e.returnValue = '';
     });
@@ -356,6 +402,9 @@ function saveState() {
         CUSTOM_PAGES: state.CUSTOM_PAGES,
         CUSTOM_EXACT_PAGES: state.CUSTOM_EXACT_PAGES,
         CUSTOM_ALLOWED_DOMAINS: state.CUSTOM_ALLOWED_DOMAINS,
+        CUSTOM_SCAN_EXCLUDED: state.CUSTOM_SCAN_EXCLUDED,
+        SCAN_MESSAGE: state.SCAN_MESSAGE,
+        SCAN_SENSITIVITY: state.SCAN_SENSITIVITY,
         ACTIVE_GAME_INDEX: state.ACTIVE_GAME_INDEX,
         SECURITY_ENABLED: state.SECURITY_ENABLED,
         PASSWORD: state.PASSWORD,
@@ -423,7 +472,7 @@ function setupListManager(inputId, btnId, listId, stateKey) {
         if (!val) return;
 
         // Domain Sanitization & Strict Validation
-        if (stateKey === 'CUSTOM_DOMAINS' || stateKey === 'CUSTOM_ALLOWED_DOMAINS') {
+        if (stateKey === 'CUSTOM_DOMAINS' || stateKey === 'CUSTOM_ALLOWED_DOMAINS' || stateKey === 'CUSTOM_SCAN_EXCLUDED') {
             let cleanVal = val;
             
             // Add a temporary protocol if not present to let the URL parser handle it reliably
@@ -487,20 +536,27 @@ function setupListManager(inputId, btnId, listId, stateKey) {
         const finalizeAdd = (finalVal) => {
             if (!finalVal) return;
 
-            // Re-adding an entry that is counting down just calls the removal off.
+            // Re-adding an entry that is counting down calls the removal off.
             const pending = pendingFor(stateKey, finalVal);
             if (pending) {
                 input.value = '';
-                cancelRemoval(listId, stateKey, pending.id);
+                if (pending.op !== 'add') cancelRemoval(listId, stateKey, pending.id);
                 return;
             }
 
-            if (!state[stateKey].includes(finalVal)) {
-                state[stateKey].push(finalVal);
-                renderList(listId, stateKey);
+            if (state[stateKey].includes(finalVal)) return;
+
+            // Adding to the scan exclusions weakens protection, so it waits.
+            if (isDelayed(stateKey, 'add')) {
                 input.value = '';
-                saveState();
+                requestChange(listId, stateKey, finalVal, 'add');
+                return;
             }
+
+            state[stateKey].push(finalVal);
+            renderList(listId, stateKey);
+            input.value = '';
+            saveState();
         };
 
         if (stateKey === 'CUSTOM_ALLOWED_DOMAINS') {
@@ -541,21 +597,42 @@ function renderList(listId, stateKey) {
 
     state[stateKey].forEach((item) => {
         const pending = pendingFor(stateKey, item);
-
-        const el = document.createElement('div');
-        el.className = pending ? 'tag-item pending' : 'tag-item';
-
-        const span = document.createElement('span');
-        span.className = 'tag-label';
-        span.textContent = item;
-        el.appendChild(span);
-
-        el.appendChild(pending
-            ? buildPendingControls(listId, stateKey, pending)
-            : buildDeleteButton(listId, stateKey, item));
-
-        container.appendChild(el);
+        container.appendChild(pending
+            ? buildPendingRow(listId, stateKey, item, pending)
+            : buildRow(listId, stateKey, item));
     });
+
+    // Entries waiting to be added are not in the list yet, so show them as
+    // ghost rows with their own countdown.
+    pendingChanges
+        .filter(p => p.listKey === stateKey && p.op === 'add' && !state[stateKey].includes(p.value))
+        .forEach(p => container.appendChild(buildPendingRow(listId, stateKey, p.value, p)));
+}
+
+function buildRow(listId, stateKey, item) {
+    const el = document.createElement('div');
+    el.className = 'tag-item';
+
+    const span = document.createElement('span');
+    span.className = 'tag-label';
+    span.textContent = item;
+
+    el.appendChild(span);
+    el.appendChild(buildDeleteButton(listId, stateKey, item));
+    return el;
+}
+
+function buildPendingRow(listId, stateKey, item, pending) {
+    const el = document.createElement('div');
+    el.className = pending.op === 'add' ? 'tag-item pending pending-add' : 'tag-item pending';
+
+    const span = document.createElement('span');
+    span.className = 'tag-label';
+    span.textContent = item;
+
+    el.appendChild(span);
+    el.appendChild(buildPendingControls(listId, stateKey, pending));
+    return el;
 }
 
 function buildDeleteButton(listId, stateKey, item) {
@@ -590,12 +667,14 @@ function buildDeleteButton(listId, stateKey, item) {
 }
 
 function buildPendingControls(listId, stateKey, pending) {
+    const isAdd = pending.op === 'add';
+
     const group = document.createElement('div');
     group.className = 'pending-controls';
 
     const label = document.createElement('span');
     label.className = 'pending-label';
-    label.textContent = 'Removing in';
+    label.textContent = isAdd ? 'Adding in' : 'Removing in';
 
     const timer = document.createElement('span');
     timer.className = 'pending-timer';
@@ -605,7 +684,7 @@ function buildPendingControls(listId, stateKey, pending) {
     const keepBtn = document.createElement('button');
     keepBtn.className = 'tag-keep';
     keepBtn.type = 'button';
-    keepBtn.textContent = 'Keep blocked';
+    keepBtn.textContent = isAdd ? 'Cancel' : 'Keep blocked';
     keepBtn.addEventListener('click', () => cancelRemoval(listId, stateKey, pending.id));
 
     group.appendChild(label);
@@ -681,6 +760,9 @@ async function restore_options() {
             CUSTOM_PAGES: [],
             CUSTOM_EXACT_PAGES: [],
             CUSTOM_ALLOWED_DOMAINS: [],
+            CUSTOM_SCAN_EXCLUDED: [],
+            SCAN_MESSAGE: CONFIG.SCAN_MESSAGE,
+            SCAN_SENSITIVITY: 2,
             ACTIVE_GAME_INDEX: -1,
             SECURITY_ENABLED: false,
             PASSWORD: '',
@@ -736,6 +818,9 @@ function exportSettings() {
         "CUSTOM_PAGES",
         "CUSTOM_EXACT_PAGES",
         "CUSTOM_ALLOWED_DOMAINS",
+        "CUSTOM_SCAN_EXCLUDED",
+        "SCAN_MESSAGE",
+        "SCAN_SENSITIVITY",
         "ACTIVE_GAME_INDEX",
         "SECURITY_ENABLED",
         "PASSWORD",
@@ -788,6 +873,9 @@ function handleImport(event) {
                 CUSTOM_PAGES: Array.isArray(imported.CUSTOM_PAGES) ? imported.CUSTOM_PAGES : [],
                 CUSTOM_EXACT_PAGES: Array.isArray(imported.CUSTOM_EXACT_PAGES) ? imported.CUSTOM_EXACT_PAGES : [],
                 CUSTOM_ALLOWED_DOMAINS: Array.isArray(imported.CUSTOM_ALLOWED_DOMAINS) ? imported.CUSTOM_ALLOWED_DOMAINS : [],
+                CUSTOM_SCAN_EXCLUDED: Array.isArray(imported.CUSTOM_SCAN_EXCLUDED) ? imported.CUSTOM_SCAN_EXCLUDED : [],
+                SCAN_MESSAGE: typeof imported.SCAN_MESSAGE === 'string' ? imported.SCAN_MESSAGE : CONFIG.SCAN_MESSAGE,
+                SCAN_SENSITIVITY: typeof imported.SCAN_SENSITIVITY === 'number' ? imported.SCAN_SENSITIVITY : 2,
                 ACTIVE_GAME_INDEX: typeof imported.ACTIVE_GAME_INDEX === 'number' ? imported.ACTIVE_GAME_INDEX : -1,
                 SECURITY_ENABLED: !!imported.SECURITY_ENABLED,
                 PASSWORD: imported.PASSWORD || "",
@@ -848,7 +936,7 @@ function setupImportOath() {
                         showToast('Could not schedule that import.');
                         return;
                     }
-                    await refreshPendingRemovals();
+                    await refreshPendingState();
                     renderPendingImport();
                     showToast(`Import held. Keep this tab open for ${formatCountdown(REMOVAL_DELAY_MS)}.`);
                 }
@@ -861,7 +949,7 @@ function setupImportOath() {
     if (discardBtn) {
         discardBtn.addEventListener('click', () => {
             chrome.runtime.sendMessage({ action: 'cancelPendingImport' }, async () => {
-                await refreshPendingRemovals();
+                await refreshPendingState();
                 renderPendingImport();
                 showToast('Import discarded — your current settings stay.');
             });

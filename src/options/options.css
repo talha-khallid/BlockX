@@ -423,6 +423,23 @@ input:checked + .hub-item-box .icon { color: var(--accent-dark); }
 
 .tag-label { min-width: 0; overflow-wrap: anywhere; }
 
+.scan-message {
+    width: 100%;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 14px 18px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-base);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    resize: vertical;
+}
+.scan-message:focus { outline: none; border-color: var(--accent); }
+
+/* Waiting to be added — not enforced yet, so no strike-through */
+.tag-item.pending-add .tag-label { text-decoration: none; font-style: italic; }
+
 /* Entries waiting out their cooling-off period */
 .tag-item.pending { border-color: var(--pending); background: var(--pending-soft); }
 .tag-item.pending:hover { border-color: var(--pending); background: var(--pending-soft); }

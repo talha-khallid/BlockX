@@ -4,11 +4,30 @@
   // 🛑 1. INSTANT SYNCHRONOUS BARRIER (THE FLASH FIX)
   // Hide the page immediately BEFORE any network requests or DOM parsing
   // ------------------------------------------------------------------
+  // The opaque variant is used while loading. The prompt variant drops the
+  // opacity so the warning overlay can be made visible on top of a still
+  // hidden page — opacity on <html> would take the overlay down with it.
+  const BARRIER_OPAQUE = 'html { visibility: hidden !important; opacity: 0 !important; background: #ffffff !important; }';
+  const BARRIER_PROMPT = 'html { visibility: hidden !important; background: #ffffff !important; }';
+
   const securityBarrier = document.createElement('style');
   securityBarrier.id = 'blockx-security-barrier';
-  securityBarrier.textContent = 'html { visibility: hidden !important; opacity: 0 !important; background: #ffffff !important; }';
+  securityBarrier.textContent = BARRIER_OPAQUE;
   if (document.documentElement) {
     document.documentElement.appendChild(securityBarrier);
+  }
+
+  const isTopFrame = window.top === window.self;
+
+  function raiseBarrier(css) {
+    securityBarrier.textContent = css;
+    if (!securityBarrier.parentNode && document.documentElement) {
+      document.documentElement.appendChild(securityBarrier);
+    }
+  }
+
+  function dropBarrier() {
+    if (securityBarrier.parentNode) securityBarrier.parentNode.removeChild(securityBarrier);
   }
 
   // --- 2. YOUTUBE SHORTS CSS INJECTION ---
@@ -50,8 +69,17 @@
   // If the site is whitelisted, drop the barrier and shut down completely.
   if (isWhitelisted()) {
     console.log('🛡️ [BlockX] Site is whitelisted. Removing barrier.');
-    if (securityBarrier.parentNode) securityBarrier.parentNode.removeChild(securityBarrier);
-    return; 
+    dropBarrier();
+    return;
+  }
+
+  function isScanExcluded() {
+    if (!CONFIG || !CONFIG.SCAN_EXCLUDED || CONFIG.SCAN_EXCLUDED.length === 0) return false;
+    const currentHost = window.location.hostname.toLowerCase();
+    return CONFIG.SCAN_EXCLUDED.some(domain => {
+      const cleanDomain = domain.trim().toLowerCase();
+      return currentHost === cleanDomain || currentHost.endsWith('.' + cleanDomain);
+    });
   }
 
   // --- 4. LISTEN FOR MAIN WORLD SPA BLOCKED NOTIFICATIONS & POPSTATE ---
@@ -91,6 +119,7 @@
         }
         const allKeywords = CONFIG.KEYWORDS.concat(badwords);
         filterRegex = createOptimizedFilter(allKeywords);
+        scanRegex = createBoundedFilter(allKeywords);
         resolve();
       });
     });
@@ -116,6 +145,174 @@
   function isExplicit(text) {
     if (!text || !filterRegex) return false;
     return filterRegex.test(text);
+  }
+
+  // ------------------------------------------------------------------
+  // 🔍 ON-PAGE CONTENT SCAN
+  // ------------------------------------------------------------------
+  // Walks the visible text once, counting DISTINCT flagged terms and bailing
+  // out the moment the threshold is met. Distinct-term counting is what keeps
+  // an article that says one word twenty times from tripping the warning.
+
+  let scanRegex = null;
+  let scanPrompted = false;
+  let scanAcknowledged = false;
+  let scanThrottleId = null;
+  let scanUrl = window.location.href;
+
+  const SKIP_TAGS = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEMPLATE: 1, TEXTAREA: 1, CODE: 1, PRE: 1 };
+
+  function countFlaggedTerms(text, found, threshold) {
+    if (!text) return false;
+    scanRegex.lastIndex = 0;
+    let match;
+    while ((match = scanRegex.exec(text)) !== null) {
+      found.add(match[0].toLowerCase());
+      if (found.size >= threshold) return true;
+    }
+    return false;
+  }
+
+  function scanPage() {
+    if (!scanRegex || !document.body) return null;
+
+    const threshold = Math.max(1, parseInt(CONFIG.SCAN_SENSITIVITY, 10) || 2);
+    const found = new Set();
+
+    // Metadata first — porn pages give themselves away here and it is cheap.
+    // Scoped to <head> on purpose: querying the whole document would walk the
+    // entire body before the text pass even starts.
+    if (countFlaggedTerms(document.title, found, threshold)) return found;
+    if (document.head) {
+      for (const meta of document.head.querySelectorAll('meta[name="description"], meta[name="keywords"], meta[property^="og:"]')) {
+        if (countFlaggedTerms(meta.getAttribute('content'), found, threshold)) return found;
+      }
+    }
+
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (!node.nodeValue || node.nodeValue.length < SCAN_MIN_TEXT_LENGTH) return NodeFilter.FILTER_REJECT;
+        const parent = node.parentNode;
+        if (parent && SKIP_TAGS[parent.nodeName]) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+
+    let visited = 0;
+    let node;
+    while ((node = walker.nextNode()) !== null) {
+      if (++visited > SCAN_NODE_LIMIT) break;
+      if (countFlaggedTerms(node.nodeValue, found, threshold)) return found;
+    }
+
+    return found.size >= threshold ? found : null;
+  }
+
+  function runContentScan() {
+    if (!isTopFrame || scanPrompted || scanAcknowledged) return false;
+    if (isWhitelisted() || isScanExcluded()) return false;
+
+    const hits = scanPage();
+    if (!hits) return false;
+
+    console.log(`[BlockX] Content scan flagged ${hits.size} distinct terms.`);
+    showScanPrompt();
+    return true;
+  }
+
+  function scheduleRescan() {
+    if (scanPrompted || scanAcknowledged || scanThrottleId) return;
+    scanThrottleId = setTimeout(() => {
+      scanThrottleId = null;
+      if (runContentScan()) return;
+    }, SCAN_THROTTLE_MS);
+  }
+
+  /**
+   * Renders the warning inside a closed shadow root so page CSS cannot reach
+   * it, and keeps the page itself hidden behind the barrier while it is up.
+   */
+  function showScanPrompt() {
+    scanPrompted = true;
+    raiseBarrier(BARRIER_PROMPT);
+
+    const host = document.createElement('div');
+    host.id = 'blockx-scan-prompt';
+    host.style.setProperty('visibility', 'visible', 'important');
+    host.style.setProperty('position', 'fixed', 'important');
+    host.style.setProperty('inset', '0', 'important');
+    host.style.setProperty('z-index', '2147483647', 'important');
+
+    const root = host.attachShadow({ mode: 'closed' });
+    const style = document.createElement('style');
+    style.textContent = `
+      .wrap {
+        position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+        background: #0f0f0f; padding: 24px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+      .card {
+        background: #1c1c1c; color: #f9fafb; border: 1px solid #3f3f46; border-radius: 20px;
+        padding: 40px; max-width: 460px; width: 100%; text-align: center;
+      }
+      .mark { font-size: 40px; line-height: 1; margin-bottom: 18px; }
+      h2 { font-size: 20px; font-weight: 700; margin: 0 0 14px; letter-spacing: -0.02em; }
+      p { font-size: 15px; line-height: 1.6; color: #d4d4d8; margin: 0 0 28px; white-space: pre-wrap; }
+      button {
+        display: block; width: 100%; font-family: inherit; font-size: 14px; font-weight: 600;
+        padding: 13px 20px; border-radius: 10px; cursor: pointer; border: 1px solid transparent;
+      }
+      .leave { background: #f9fafb; color: #111827; margin-bottom: 10px; }
+      .leave:hover { background: #ffffff; }
+      .show { background: transparent; color: #a1a1aa; border-color: #3f3f46; }
+      .show:hover { color: #f9fafb; border-color: #71717a; }
+    `;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'wrap';
+
+    const card = document.createElement('div');
+    card.className = 'card';
+
+    const mark = document.createElement('div');
+    mark.className = 'mark';
+    mark.textContent = '🛡️';
+
+    const heading = document.createElement('h2');
+    heading.textContent = 'Explicit content detected';
+
+    const message = document.createElement('p');
+    message.textContent = (CONFIG.SCAN_MESSAGE || '').trim()
+      || 'This page looks explicit. Do you still want to open it?';
+
+    const leaveBtn = document.createElement('button');
+    leaveBtn.className = 'leave';
+    leaveBtn.textContent = 'No, close this tab';
+    leaveBtn.addEventListener('click', () => {
+      chrome.runtime.sendMessage({ action: 'closeTab' });
+    });
+
+    const showBtn = document.createElement('button');
+    showBtn.className = 'show';
+    showBtn.textContent = 'Yes, show it';
+    showBtn.addEventListener('click', () => {
+      scanAcknowledged = true;
+      scanPrompted = false;
+      if (host.parentNode) host.parentNode.removeChild(host);
+      dropBarrier();
+    });
+
+    card.appendChild(mark);
+    card.appendChild(heading);
+    card.appendChild(message);
+    card.appendChild(leaveBtn);
+    card.appendChild(showBtn);
+    wrap.appendChild(card);
+    root.appendChild(style);
+    root.appendChild(wrap);
+
+    (document.body || document.documentElement).appendChild(host);
+    leaveBtn.focus();
   }
 
   function isBlockedDomain(hostname) {
@@ -184,6 +381,12 @@
     const currentUrl = window.location.href;
     const currentHost = window.location.hostname;
 
+    // A route change is a fresh page as far as the scan is concerned.
+    if (currentUrl !== scanUrl) {
+      scanUrl = currentUrl;
+      scanAcknowledged = false;
+    }
+
     if (
       isBlockedDomain(currentHost) ||
       isBlockedPage(currentUrl) ||
@@ -195,14 +398,13 @@
       handleBlock();
       return true;
     }
-    return false;
+
+    return runContentScan();
   }
 
   const cleanup = () => {
     if (!verifyPageSafety()) {
-      if (securityBarrier && securityBarrier.parentNode) {
-          securityBarrier.parentNode.removeChild(securityBarrier);
-      }
+      dropBarrier();
     }
     if (typeof observer !== 'undefined' && isWhitelisted()) {
       observer.disconnect();
@@ -211,6 +413,8 @@
 
   const observer = new MutationObserver(() => {
     if (document.title) verifyPageSafety();
+    // Late-loading content (infinite scroll, SPA routes) gets a throttled pass.
+    scheduleRescan();
   });
 
   observer.observe(document.documentElement, { subtree: true, childList: true });

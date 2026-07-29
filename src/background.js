@@ -48,13 +48,13 @@ function isMasterBlocked(domain) {
 
 const OPTIONS_URL = chrome.runtime.getURL('src/options/options.html');
 
-async function getPendingRemovals() {
-  const { PENDING_REMOVALS } = await chrome.storage.local.get({ PENDING_REMOVALS: [] });
-  return Array.isArray(PENDING_REMOVALS) ? PENDING_REMOVALS : [];
+async function getPendingChanges() {
+  const { PENDING_CHANGES } = await chrome.storage.local.get({ PENDING_CHANGES: [] });
+  return Array.isArray(PENDING_CHANGES) ? PENDING_CHANGES : [];
 }
 
-function setPendingRemovals(pending) {
-  return chrome.storage.local.set({ PENDING_REMOVALS: pending });
+function setPendingChanges(pending) {
+  return chrome.storage.local.set({ PENDING_CHANGES: pending });
 }
 
 // The tab counts as alive only while it exists AND is still on the dashboard.
@@ -67,11 +67,12 @@ async function isOwnerTabAlive(tabId) {
   }
 }
 
-async function schedulePendingRemoval(listKey, value, tabId) {
-  if (!DELAYED_REMOVAL_LISTS.includes(listKey)) return null;
+async function schedulePendingChange(listKey, value, op, tabId) {
+  const direction = op === 'add' ? 'add' : 'remove';
+  if (!isDelayed(listKey, direction)) return null;
   if (typeof tabId !== 'number' || typeof value !== 'string') return null;
 
-  const pending = await getPendingRemovals();
+  const pending = await getPendingChanges();
   const existing = pending.find(p => p.listKey === listKey && p.value === value);
   if (existing) return existing;
 
@@ -80,22 +81,23 @@ async function schedulePendingRemoval(listKey, value, tabId) {
     id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
     listKey,
     value,
+    op: direction,
     tabId,
     scheduledAt: now,
     expiresAt: now + REMOVAL_DELAY_MS
   };
 
   pending.push(record);
-  await setPendingRemovals(pending);
+  await setPendingChanges(pending);
   chrome.alarms.create(PENDING_ALARM_PREFIX + record.id, { when: record.expiresAt });
   return record;
 }
 
-async function cancelPendingRemoval(id) {
-  const pending = await getPendingRemovals();
+async function cancelPendingChange(id) {
+  const pending = await getPendingChanges();
   const remaining = pending.filter(p => p.id !== id);
   if (remaining.length === pending.length) return;
-  await setPendingRemovals(remaining);
+  await setPendingChanges(remaining);
   await chrome.alarms.clear(PENDING_ALARM_PREFIX + id);
 }
 
@@ -106,22 +108,22 @@ async function cancelPendingForTab(tabId) {
     console.log('[BlockX] Dashboard left — voided the pending settings import.');
   }
 
-  const pending = await getPendingRemovals();
+  const pending = await getPendingChanges();
   const voided = pending.filter(p => p.tabId === tabId);
   if (voided.length === 0) return;
 
-  await setPendingRemovals(pending.filter(p => p.tabId !== tabId));
+  await setPendingChanges(pending.filter(p => p.tabId !== tabId));
   await Promise.all(voided.map(p => chrome.alarms.clear(PENDING_ALARM_PREFIX + p.id)));
   console.log(`[BlockX] Dashboard left — voided ${voided.length} pending removal(s).`);
 }
 
-async function executePendingRemoval(id) {
-  const pending = await getPendingRemovals();
+async function executePendingChange(id) {
+  const pending = await getPendingChanges();
   const record = pending.find(p => p.id === id);
   if (!record) return;
 
   if (!(await isOwnerTabAlive(record.tabId))) {
-    await cancelPendingRemoval(id);
+    await cancelPendingChange(id);
     return;
   }
 
@@ -131,17 +133,21 @@ async function executePendingRemoval(id) {
     return;
   }
 
-  await setPendingRemovals(pending.filter(p => p.id !== id));
+  await setPendingChanges(pending.filter(p => p.id !== id));
   await chrome.alarms.clear(PENDING_ALARM_PREFIX + id);
 
   const stored = await chrome.storage.local.get({ [record.listKey]: [] });
   const list = Array.isArray(stored[record.listKey]) ? stored[record.listKey] : [];
-  const remaining = list.filter(item => item !== record.value);
 
-  if (remaining.length !== list.length) {
+  const next = record.op === 'add'
+    ? (list.includes(record.value) ? list : [...list, record.value])
+    : list.filter(item => item !== record.value);
+
+  if (next.length !== list.length) {
     // This write trips the storage listener below, which rebuilds the DNR rules.
-    await chrome.storage.local.set({ [record.listKey]: remaining });
-    console.log(`[BlockX] Cooling-off elapsed — removed "${record.value}" from ${record.listKey}.`);
+    await chrome.storage.local.set({ [record.listKey]: next });
+    const verb = record.op === 'add' ? 'added' : 'removed';
+    console.log(`[BlockX] Cooling-off elapsed — ${verb} "${record.value}" ${verb === 'added' ? 'to' : 'from'} ${record.listKey}.`);
   }
 }
 
@@ -179,10 +185,10 @@ async function applyImportNow(settings) {
   if (!clean) return false;
 
   // The lists are replaced wholesale, so any in-flight removal is moot.
-  const pending = await getPendingRemovals();
+  const pending = await getPendingChanges();
   await Promise.all(pending.map(p => chrome.alarms.clear(PENDING_ALARM_PREFIX + p.id)));
   await clearPendingImport();
-  await chrome.storage.local.set({ ...clean, PENDING_REMOVALS: [] });
+  await chrome.storage.local.set({ ...clean, PENDING_CHANGES: [] });
   return true;
 }
 
@@ -229,7 +235,7 @@ async function executePendingImport(id) {
 
 // Drops records whose dashboard tab is gone and re-arms the ones that survived.
 // After a browser restart every tab id is new, so everything pending is voided.
-async function reconcilePendingRemovals() {
+async function reconcilePendingState() {
   const pendingImport = await getPendingImport();
   if (pendingImport) {
     if (!(await isOwnerTabAlive(pendingImport.tabId))) {
@@ -241,7 +247,7 @@ async function reconcilePendingRemovals() {
     }
   }
 
-  const pending = await getPendingRemovals();
+  const pending = await getPendingChanges();
   if (pending.length === 0) return;
 
   const survivors = [];
@@ -253,11 +259,11 @@ async function reconcilePendingRemovals() {
     }
   }
 
-  if (survivors.length !== pending.length) await setPendingRemovals(survivors);
+  if (survivors.length !== pending.length) await setPendingChanges(survivors);
 
   for (const record of survivors) {
     if (Date.now() >= record.expiresAt) {
-      await executePendingRemoval(record.id);
+      await executePendingChange(record.id);
     } else {
       chrome.alarms.create(PENDING_ALARM_PREFIX + record.id, { when: record.expiresAt });
     }
@@ -266,7 +272,7 @@ async function reconcilePendingRemovals() {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name.startsWith(PENDING_ALARM_PREFIX)) {
-    executePendingRemoval(alarm.name.slice(PENDING_ALARM_PREFIX.length));
+    executePendingChange(alarm.name.slice(PENDING_ALARM_PREFIX.length));
   } else if (alarm.name.startsWith(PENDING_IMPORT_ALARM_PREFIX)) {
     executePendingImport(alarm.name.slice(PENDING_IMPORT_ALARM_PREFIX.length));
   }
@@ -424,13 +430,13 @@ async function updateBlockingRules() {
 chrome.runtime.onInstalled.addListener(() => {
   ensureDomainListLoaded();
   updateBlockingRules();
-  reconcilePendingRemovals();
+  reconcilePendingState();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   ensureDomainListLoaded();
   updateBlockingRules();
-  reconcilePendingRemovals();
+  reconcilePendingState();
 });
 
 chrome.storage.onChanged.addListener(async (changes, area) => {
@@ -474,21 +480,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action === 'schedulePendingRemoval') {
-    schedulePendingRemoval(request.listKey, request.value, sender.tab?.id)
+  if (request.action === 'closeTab' && sender.tab) {
+    chrome.tabs.remove(sender.tab.id).catch(() => {});
+    return true;
+  }
+
+  if (request.action === 'schedulePendingChange') {
+    schedulePendingChange(request.listKey, request.value, request.op, sender.tab?.id)
       .then((record) => sendResponse({ record }));
     return true;
   }
 
-  if (request.action === 'cancelPendingRemoval') {
-    cancelPendingRemoval(request.id).then(() => sendResponse({ ok: true }));
+  if (request.action === 'cancelPendingChange') {
+    cancelPendingChange(request.id).then(() => sendResponse({ ok: true }));
     return true;
   }
 
-  if (request.action === 'getPendingRemovals') {
-    reconcilePendingRemovals()
+  if (request.action === 'getPendingChanges') {
+    reconcilePendingState()
       .then(async () => sendResponse({
-        pending: await getPendingRemovals(),
+        pending: await getPendingChanges(),
         pendingImport: await getPendingImport()
       }));
     return true;

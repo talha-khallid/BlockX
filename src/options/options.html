@@ -37,6 +37,10 @@
                     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                     <span>Pages</span>
                 </a>
+                <a href="#" class="nav-link" data-section="scanning">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <span>Scanning</span>
+                </a>
                 <a href="#" class="nav-link" data-section="security">
                     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
                     <span>Security</span>
@@ -303,6 +307,86 @@
                                 </button>
                             </div>
                             <div id="exact-page-list" class="tag-cloud">
+                                <!-- Populated by JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Scanning Section -->
+                <div id="section-scanning" class="settings-section">
+                    <div class="settings-group">
+                        <div class="group-header">
+                            <h3>Warning Message</h3>
+                            <p>Shown on any page where explicit wording is detected. Write something that will actually stop you.</p>
+                        </div>
+                        <div class="interactive-list-manager">
+                            <textarea id="scan-message" class="scan-message" rows="3" maxlength="400" placeholder="Write the message you need to read in that moment..."></textarea>
+                            <div class="input-row" style="margin-top: 12px;">
+                                <button id="save-scan-message-btn" class="btn btn-secondary">Save Message</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <div class="group-header">
+                            <h3>Sensitivity</h3>
+                            <p>How many different flagged words a page needs before the warning appears.</p>
+                        </div>
+                        <div class="enforcement-grid">
+                            <label class="enforcement-card">
+                                <input type="radio" name="scanSensitivity" value="1" class="sr-only">
+                                <div class="card-content">
+                                    <div class="card-info">
+                                        <span class="title">Strict</span>
+                                        <span class="desc">One word is enough. Expect false alarms.</span>
+                                    </div>
+                                    <div class="selection-check">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    </div>
+                                </div>
+                            </label>
+                            <label class="enforcement-card">
+                                <input type="radio" name="scanSensitivity" value="2" class="sr-only">
+                                <div class="card-content">
+                                    <div class="card-info">
+                                        <span class="title">Balanced</span>
+                                        <span class="desc">Two different words. Recommended.</span>
+                                    </div>
+                                    <div class="selection-check">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    </div>
+                                </div>
+                            </label>
+                            <label class="enforcement-card">
+                                <input type="radio" name="scanSensitivity" value="4" class="sr-only">
+                                <div class="card-content">
+                                    <div class="card-info">
+                                        <span class="title">Relaxed</span>
+                                        <span class="desc">Four different words. Fewest interruptions.</span>
+                                    </div>
+                                    <div class="selection-check">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <div class="group-header">
+                            <h3>Scan Exclusions</h3>
+                            <p>These sites are never scanned. Adding one waits 12 minutes; removing one is instant.</p>
+                        </div>
+                        <div class="interactive-list-manager">
+                            <div class="input-row">
+                                <input type="text" id="scan-excluded-input" placeholder="Exclude a domain (e.g. wikipedia.org)">
+                                <button id="add-scan-excluded-btn" class="btn btn-secondary">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                    Add
+                                </button>
+                            </div>
+                            <div id="scan-excluded-list" class="tag-cloud">
                                 <!-- Populated by JS -->
                             </div>
                         </div>

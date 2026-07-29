@@ -30,6 +30,15 @@ let CONFIG = {
   // Allowed Domains (Whitelist to bypass all blocks)
   ALLOWED_DOMAINS: [],
 
+  // Domains exempt from on-page content scanning
+  SCAN_EXCLUDED: [],
+
+  // Message shown by the on-page content warning
+  SCAN_MESSAGE: 'This page looks explicit. Remember why you set this up. Do you still want to open it?',
+
+  // How many DISTINCT flagged terms a page needs before the warning appears
+  SCAN_SENSITIVITY: 2,
+
   GAMES: [
     { name: "Tower Blocks", path: "assets/blocked-pages/tower-blocks.html" },
     { name: "Rubiks Cube", path: "assets/blocked-pages/rubiks-cube.html" },
@@ -43,8 +52,7 @@ let CONFIG = {
 // only lands if the dashboard tab that asked for it stays open the whole time.
 const REMOVAL_DELAY_MS = 12 * 60 * 1000;
 
-// Lists that removals are delayed on. Whitelist removals stay instant because
-// they only ever increase protection.
+// Taking an entry OFF one of these lists weakens protection, so it waits.
 const DELAYED_REMOVAL_LISTS = [
   'CUSTOM_DOMAINS',
   'CUSTOM_KEYWORDS',
@@ -52,7 +60,19 @@ const DELAYED_REMOVAL_LISTS = [
   'CUSTOM_EXACT_PAGES'
 ];
 
-const PENDING_ALARM_PREFIX = 'blockx-pending-removal:';
+// Putting an entry ON one of these lists weakens protection, so it waits.
+// The inverse direction on both kinds of list stays instant.
+const DELAYED_ADDITION_LISTS = [
+  'CUSTOM_SCAN_EXCLUDED'
+];
+
+function isDelayed(listKey, op) {
+  return op === 'add'
+    ? DELAYED_ADDITION_LISTS.includes(listKey)
+    : DELAYED_REMOVAL_LISTS.includes(listKey);
+}
+
+const PENDING_ALARM_PREFIX = 'blockx-pending-change:';
 const PENDING_IMPORT_ALARM_PREFIX = 'blockx-pending-import:';
 
 // Settings keys an imported backup is allowed to write.
@@ -63,6 +83,9 @@ const IMPORTABLE_KEYS = [
   'CUSTOM_PAGES',
   'CUSTOM_EXACT_PAGES',
   'CUSTOM_ALLOWED_DOMAINS',
+  'CUSTOM_SCAN_EXCLUDED',
+  'SCAN_MESSAGE',
+  'SCAN_SENSITIVITY',
   'ACTIVE_GAME_INDEX',
   'SECURITY_ENABLED',
   'PASSWORD',
@@ -98,6 +121,9 @@ async function loadConfig() {
       ],
       CUSTOM_EXACT_PAGES: [],
       CUSTOM_ALLOWED_DOMAINS: [], // FIXED: Changed from ALLOWED_DOMAINS to CUSTOM_ALLOWED_DOMAINS
+      CUSTOM_SCAN_EXCLUDED: [],
+      SCAN_MESSAGE: CONFIG.SCAN_MESSAGE,
+      SCAN_SENSITIVITY: 2,
       ACTIVE_GAME_INDEX: -1
     }, (items) => {
       CONFIG.BLOCK_METHOD = items.BLOCK_METHOD;
@@ -107,6 +133,9 @@ async function loadConfig() {
       CONFIG.PAGE_URLS = items.CUSTOM_PAGES;
       CONFIG.EXACT_PAGE_URLS = items.CUSTOM_EXACT_PAGES;
       CONFIG.ALLOWED_DOMAINS = items.CUSTOM_ALLOWED_DOMAINS;
+      CONFIG.SCAN_EXCLUDED = items.CUSTOM_SCAN_EXCLUDED;
+      CONFIG.SCAN_MESSAGE = items.SCAN_MESSAGE;
+      CONFIG.SCAN_SENSITIVITY = items.SCAN_SENSITIVITY;
       CONFIG.ACTIVE_GAME_INDEX = items.ACTIVE_GAME_INDEX;
       resolve(CONFIG);
     });
@@ -137,6 +166,30 @@ function createOptimizedFilter(keywords) {
   const pattern = validKeywords.map(escapeRegExp).join('|');
   return new RegExp(pattern, 'i');
 }
+
+// ------------------------------------------------------------------
+// CONTENT SCAN FILTER
+// ------------------------------------------------------------------
+// Page scanning needs word boundaries. A bare substring alternation matches
+// "anal" inside "analysis", "butt" inside "button" and "rape" inside "grape",
+// which would flag ordinary pages constantly.
+function createBoundedFilter(keywords) {
+  if (!keywords || keywords.length === 0) return null;
+
+  const valid = [...new Set(
+    keywords
+      .map(kw => kw.trim().toLowerCase())
+      .filter(kw => kw.length >= 3)
+  )].sort((a, b) => b.length - a.length); // longest alternative wins
+
+  if (valid.length === 0) return null;
+  return new RegExp(`\\b(?:${valid.map(escapeRegExp).join('|')})\\b`, 'gi');
+}
+
+// Work budget for a single scan pass. Bounds the cost on huge documents.
+const SCAN_NODE_LIMIT = 6000;
+const SCAN_MIN_TEXT_LENGTH = 3;
+const SCAN_THROTTLE_MS = 800;
 
 function getBlockUrl(method, hostname, extensionUrl) {
   if (method === 'blocked_page' && CONFIG.SHOW_GAME_INSTANTLY && CONFIG.GAMES.length > 0) {
