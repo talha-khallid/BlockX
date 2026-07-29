@@ -1,3 +1,4 @@
 __pycache__/
 *.pyc
 native/blockx_host.bat
+_metadata/
