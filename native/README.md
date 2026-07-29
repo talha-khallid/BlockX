@@ -49,6 +49,21 @@ user — Chrome, Chromium, Brave, Edge, Vivaldi, including Flatpak installs. It
 writes nothing outside your own home directory and needs no administrator
 rights.
 
+You register **once per browser installation, not once per profile**. Chrome
+keeps native host registrations at the root of its user data directory, so
+every profile inside it — Default, Profile 1, Profile 2 and so on — picks the
+same one up, whatever Google account each is signed into. That is the whole
+point of this layer.
+
+### Flatpak
+
+Flatpak browsers work, with one wrinkle worth knowing. Inside the sandbox
+`XDG_CONFIG_HOME` points at the browser's own private tree
+(`~/.var/app/<app-id>/config`), so honouring it would give every browser a
+separate settings file. The host detects Flatpak and uses your real home
+instead, keeping one shared file. Flatpak browsers that can reach the host
+already hold `home` filesystem permission, so nothing extra is needed.
+
 ### Where the settings file lives
 
 | Platform | Path |

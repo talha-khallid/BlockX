@@ -30,6 +30,10 @@ FILE_NAME = "settings.json"
 MAX_MESSAGE_BYTES = 4 * 1024 * 1024
 
 
+def in_flatpak() -> bool:
+    return os.path.exists("/.flatpak-info") or bool(os.environ.get("FLATPAK_ID"))
+
+
 def settings_path() -> str:
     """The conventional per-user config location for each platform."""
     if sys.platform == "win32":
@@ -40,8 +44,17 @@ def settings_path() -> str:
         base = os.path.expanduser("~/Library/Application Support")
         return os.path.join(base, APP_DIR_NAME, FILE_NAME)
 
-    # Linux and other unixes follow the XDG base directory spec.
-    base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    # Linux and other unixes follow the XDG base directory spec — except under
+    # Flatpak, where XDG_CONFIG_HOME points into the calling app's private
+    # sandbox tree (~/.var/app/<id>/config). Honouring it there would give each
+    # browser its own private settings file, which is the opposite of the
+    # point, so the real home is used instead. Flatpak browsers that can reach
+    # this host already hold home filesystem permission.
+    if in_flatpak():
+        base = os.path.join(os.path.expanduser("~"), ".config")
+    else:
+        base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+
     return os.path.join(base, APP_DIR_NAME.lower(), FILE_NAME)
 
 
