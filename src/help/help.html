@@ -206,6 +206,25 @@ python3 install.py</pre>
                    the browser actually ended up using.</p>
             </div>
 
+            <div class="help-card">
+                <h2>Flatpak browsers: quit properly</h2>
+                <p>A Flatpak browser cannot see the host's <code>/etc</code> directly. Its launcher
+                   copies the policy files in as symlinks <strong>once, when the browser starts</strong>,
+                   and never again. A file written after that point is invisible to the running browser,
+                   however many windows you close and reopen, because the sandbox from the original
+                   launch is still alive.</p>
+                <p>So on Flatpak, after writing the policy:</p>
+                <div class="cmd-block">
+                    <pre id="flatpak-cmd">flatpak kill com.google.Chrome</pre>
+                    <button class="copy-btn" data-copy="flatpak-cmd" type="button">Copy</button>
+                </div>
+                <p class="muted">Then start it again. Substitute the app id for your browser —
+                   <code>com.brave.Browser</code>, <code>org.chromium.Chromium</code>. If you are not
+                   using Flatpak, ignore this card entirely.</p>
+                <p class="muted">The same launcher never clears symlinks for files you delete, so an
+                   old policy can appear to linger until the next full restart too.</p>
+            </div>
+
             <div class="help-card warn">
                 <h2>Read this before you run it</h2>
                 <ul class="warn-list">

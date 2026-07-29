@@ -240,8 +240,11 @@ const RUN_NOTES = {
     'Open a terminal.',
     'Paste the line and press Enter.',
     'Enter your password when sudo asks — this writes to /etc, which is why it needs one.',
-    'Quit the browser completely and start it again.',
-    'Check chrome://policy — the entries should be listed as Source: Platform.'
+    'Quit the browser completely and start it again. Closing every window is not always '
+      + 'enough; if it still does not show up, end the remaining process and relaunch.',
+    'On a Flatpak browser, quitting properly matters more than usual — see the note below.',
+    'Open chrome://policy. The entries should be listed with Source: Platform. If the page '
+      + 'is empty, the browser was never restarted.'
   ],
   macos: [
     'Open Terminal.',
