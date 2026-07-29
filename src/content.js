@@ -523,22 +523,43 @@
     showBtn.type = 'button';
     showBtn.textContent = 'Yes, show it';
 
-    if (gateInput) {
-      const collapse = (text) => text.trim().replace(/\s+/g, ' ');
-      showBtn.disabled = true;
-      gateInput.addEventListener('input', () => {
-        showBtn.disabled = collapse(gateInput.value) !== collapse(phrase);
-      });
-    }
-
-    showBtn.addEventListener('click', () => {
-      if (showBtn.disabled) return;
+    const reveal = () => {
       scanAcknowledged = true;
       scanPrompted = false;
       if (host.parentNode) host.parentNode.removeChild(host);
       thawMedia();
       dropBarrier();
-    });
+    };
+
+    if (gateInput) {
+      // Enabling the button is only an affordance. The decision below is made
+      // by the service worker, so clearing this attribute in an inspector
+      // reveals nothing.
+      const looksRight = () =>
+        gateInput.value.trim().replace(/\s+/g, ' ') === phrase.trim().replace(/\s+/g, ' ');
+
+      showBtn.disabled = true;
+      gateInput.addEventListener('input', () => { showBtn.disabled = !looksRight(); });
+
+      showBtn.addEventListener('click', async () => {
+        showBtn.disabled = true;
+        let allowed = false;
+        try {
+          const reply = await chrome.runtime.sendMessage({
+            action: 'verifyUnlockPhrase',
+            typed: gateInput.value
+          });
+          allowed = !!(reply && reply.ok);
+        } catch {
+          allowed = false;   // unreachable worker means stay shut, not open
+        }
+        if (allowed) reveal();
+        else showBtn.disabled = !looksRight();
+      });
+    } else {
+      // No phrase configured, so the warning is a plain confirmation.
+      showBtn.addEventListener('click', reveal);
+    }
 
     card.appendChild(leaveBtn);
     card.appendChild(showBtn);

@@ -633,16 +633,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === 'verifyUnlockPhrase') {
+    (async () => {
+      const config = await loadConfig();
+      sendResponse({ ok: unlockPhraseMatches(config.UNLOCK_PHRASE, request.typed) });
+    })();
+    return true;
+  }
+
   if (request.action === 'grantTempPass') {
     (async () => {
       const config = await loadConfig();
-      const expected = (config.UNLOCK_PHRASE || '').trim();
-      const typed = String(request.typed || '').trim();
-
-      // Compared with whitespace collapsed but case intact — retyping it is
-      // the point, autocorrecting it away is not.
-      const normalise = (t) => t.replace(/\s+/g, ' ');
-      if (!expected || normalise(typed) !== normalise(expected)) {
+      if (!unlockPhraseMatches(config.UNLOCK_PHRASE, request.typed)) {
         sendResponse({ ok: false, reason: 'mismatch' });
         return;
       }
@@ -896,6 +898,18 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
 async function readGrants() {
   const { TEMP_GRANTS = [] } = await chrome.storage.local.get({ TEMP_GRANTS: [] });
   return activeGrants(TEMP_GRANTS);
+}
+
+/**
+ * The single place the unlock phrase is judged. It lives in the service worker
+ * on purpose: a page inspector can rewrite anything in a tab, including a
+ * button's disabled attribute, so no decision that matters may be taken from
+ * the state of the DOM.
+ */
+function unlockPhraseMatches(expected, typed) {
+  const want = String(expected || '').trim().replace(/\s+/g, ' ');
+  const got = String(typed || '').trim().replace(/\s+/g, ' ');
+  return want.length > 0 && want === got;
 }
 
 async function grantTempPass(host, tabId) {
