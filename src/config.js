@@ -246,6 +246,87 @@ function createOptimizedFilter(keywords) {
 }
 
 // ------------------------------------------------------------------
+// HOST ENTRIES
+// ------------------------------------------------------------------
+// Allow-list entries are not always registrable domains. A development setup
+// needs localhost, a LAN address, a container name or a loopback literal, with
+// or without a port.
+
+const IPV4_PATTERN = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+const HOST_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+function classifyHost(hostname) {
+  if (!hostname) return null;
+  if (hostname.startsWith('[') && hostname.endsWith(']')) return 'ipv6';
+  if (IPV4_PATTERN.test(hostname)) return 'ipv4';
+  const labels = hostname.split('.');
+  if (!labels.every(label => HOST_LABEL_PATTERN.test(label))) return null;
+  // A single label is a bare host such as localhost or a container name.
+  return labels.length > 1 ? 'domain' : 'host';
+}
+
+/**
+ * Parses anything a user might paste — with or without a scheme, path or port —
+ * into { host, port, kind, value }, or null when it is not a host at all.
+ */
+function normaliseHostEntry(raw) {
+  if (typeof raw !== 'string') return null;
+
+  let text = raw.trim().toLowerCase();
+  if (!text) return null;
+
+  text = text.replace(/^[a-z][a-z0-9+.-]*:\/\//, '');       // scheme
+  text = text.split('/')[0].split('?')[0].split('#')[0];    // path, query, hash
+  text = text.replace(/^[^@]*@/, '');                       // credentials
+  if (!text) return null;
+
+  // A bare IPv6 literal has to be bracketed before the URL parser will take it.
+  if (!text.startsWith('[') && (text.match(/:/g) || []).length > 1) text = `[${text}]`;
+
+  let parsed;
+  try {
+    parsed = new URL('http://' + text);
+  } catch {
+    return null;
+  }
+
+  let host = parsed.hostname;
+  if (!host) return null;
+  if (host.startsWith('www.')) host = host.slice(4);
+
+  const kind = classifyHost(host);
+  if (!kind) return null;
+
+  const port = parsed.port || '';
+  return { host, port, kind, value: port ? `${host}:${port}` : host };
+}
+
+/**
+ * Does a location match a stored entry?
+ *
+ * Only real multi-label domains extend to their subdomains. Bare hosts and
+ * literal addresses match exactly — otherwise an entry of "com" would whitelist
+ * every .com site, and "0.1" would match 127.0.0.1. An entry without a port
+ * matches any port; one with a port matches only that port.
+ */
+function hostMatchesEntry(hostname, port, entry) {
+  const parsed = (entry && typeof entry === 'object') ? entry : normaliseHostEntry(entry);
+  if (!parsed) return false;
+
+  if (parsed.port && String(port || '') !== parsed.port) return false;
+
+  const host = String(hostname || '').toLowerCase().replace(/^www\./, '');
+  if (host === parsed.host) return true;
+
+  return parsed.kind === 'domain' && host.endsWith('.' + parsed.host);
+}
+
+function matchesAnyHostEntry(hostname, port, entries) {
+  if (!Array.isArray(entries) || entries.length === 0) return false;
+  return entries.some(entry => hostMatchesEntry(hostname, port, entry));
+}
+
+// ------------------------------------------------------------------
 // CONTENT SCAN FILTER
 // ------------------------------------------------------------------
 // Page scanning needs word boundaries. A bare substring alternation matches

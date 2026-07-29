@@ -62,12 +62,8 @@
   await loadConfig();
 
   function isWhitelisted() {
-    if (!CONFIG || !CONFIG.ALLOWED_DOMAINS || CONFIG.ALLOWED_DOMAINS.length === 0) return false;
-    const currentHost = window.location.hostname.toLowerCase();
-    return CONFIG.ALLOWED_DOMAINS.some(domain => {
-      const cleanDomain = domain.trim().toLowerCase();
-      return currentHost === cleanDomain || currentHost.endsWith('.' + cleanDomain);
-    });
+    if (!CONFIG) return false;
+    return matchesAnyHostEntry(window.location.hostname, window.location.port, CONFIG.ALLOWED_DOMAINS);
   }
 
   // If the site is whitelisted, drop the barrier and shut down completely.

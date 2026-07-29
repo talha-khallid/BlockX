@@ -520,8 +520,20 @@ function setupListManager(inputId, btnId, listId, stateKey) {
         let val = input.value.trim().toLowerCase();
         if (!val) return;
 
+        // The whitelist accepts any host you can actually navigate to, not just
+        // registrable domains: localhost, a LAN address, a container name, an
+        // IPv6 literal, each with an optional port.
+        if (stateKey === 'CUSTOM_ALLOWED_DOMAINS') {
+            const entry = normaliseHostEntry(val);
+            if (!entry) {
+                showToast('Not a valid host. Try example.com, localhost:3000 or 192.168.1.10.');
+                return;
+            }
+            val = entry.value;
+        }
+
         // Domain Sanitization & Strict Validation
-        if (stateKey === 'CUSTOM_DOMAINS' || stateKey === 'CUSTOM_ALLOWED_DOMAINS' || stateKey === 'CUSTOM_SCAN_EXCLUDED') {
+        if (stateKey === 'CUSTOM_DOMAINS' || stateKey === 'CUSTOM_SCAN_EXCLUDED') {
             let cleanVal = val;
             
             // Add a temporary protocol if not present to let the URL parser handle it reliably
@@ -613,7 +625,9 @@ function setupListManager(inputId, btnId, listId, stateKey) {
                 showToast("Cannot whitelist a domain that is in your custom blocklist.");
                 return;
             }
-            chrome.runtime.sendMessage({ action: 'isMasterBlocked', domain: val }, (response) => {
+            // The master list is keyed by hostname, so ask about the host alone.
+            const bareHost = (normaliseHostEntry(val) || {}).host || val;
+            chrome.runtime.sendMessage({ action: 'isMasterBlocked', domain: bareHost }, (response) => {
                 if (response && response.blocked) {
                     showToast("Cannot whitelist globally restricted sites.");
                 } else {

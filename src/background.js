@@ -391,16 +391,25 @@ async function updateBlockingRules() {
 
     const addAllowRule = (priority, filter) => {
       if (rules.length >= DYNAMIC_RULE_LIMIT) return false;
-      const clean = filter.trim().toLowerCase();
-      if (!clean) return false;
-      const asciiDomain = toPunycode(clean);
-      if (!isAscii(asciiDomain)) return false;
-      rules.push({
-        id: ruleId++,
-        priority,
-        action: { type: 'allow' },
-        condition: { urlFilter: `||${asciiDomain}^`, resourceTypes: ['main_frame', 'sub_frame'] }
-      });
+
+      const entry = normaliseHostEntry(filter);
+      if (!entry) return false;
+
+      const asciiHost = toPunycode(entry.host);
+      if (!isAscii(asciiHost)) return false;
+
+      // The || anchor only understands plain domain names, so a port or an
+      // address literal needs an explicit pattern instead.
+      const condition = (entry.port || entry.kind === 'ipv6')
+        ? {
+            regexFilter: `^https?://${escapeRegExp(asciiHost)}`
+              + (entry.port ? `:${entry.port}` : '(?::\\d+)?')
+              + '(?:[/?#]|$)',
+            resourceTypes: ['main_frame', 'sub_frame']
+          }
+        : { urlFilter: `||${asciiHost}^`, resourceTypes: ['main_frame', 'sub_frame'] };
+
+      rules.push({ id: ruleId++, priority, action: { type: 'allow' }, condition });
       return true;
     };
 
@@ -565,12 +574,7 @@ function shouldBlockUrl(urlStr, config) {
   if (config.ALLOWED_DOMAINS && config.ALLOWED_DOMAINS.length > 0) {
     try {
       const parsed = new URL(urlStr);
-      const hostname = parsed.hostname.toLowerCase();
-      const isAllowed = config.ALLOWED_DOMAINS.some(d => {
-        const clean = d.trim().toLowerCase();
-        return hostname === clean || hostname.endsWith('.' + clean);
-      });
-      if (isAllowed) return false; 
+      if (matchesAnyHostEntry(parsed.hostname, parsed.port, config.ALLOWED_DOMAINS)) return false;
     } catch { /* ignore */ }
   }
 
