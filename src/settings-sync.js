@@ -35,10 +35,11 @@ function nextRevision(...revisions) {
 // ------------------------------------------------------------------
 
 async function readLocalSnapshot() {
-  const defaults = { SETTINGS_REVISION: 0 };
-  for (const key of SETTINGS_KEYS) defaults[key] = undefined;
-
-  const stored = await chrome.storage.local.get(defaults);
+  // Array form on purpose. Passing an object whose values are `undefined`
+  // silently drops those keys when the argument is serialised across the
+  // extension API boundary, so only SETTINGS_REVISION would be requested and
+  // every snapshot would come back empty.
+  const stored = await chrome.storage.local.get([...SETTINGS_KEYS, 'SETTINGS_REVISION']);
   return {
     revision: typeof stored.SETTINGS_REVISION === 'number' ? stored.SETTINGS_REVISION : 0,
     settings: pickSettings(stored) || {}
