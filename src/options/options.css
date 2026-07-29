@@ -654,3 +654,7 @@ input:checked + .slider:before { transform: translateX(20px); }
     user-select: none;
     padding: 0 4px;
 }
+
+/* Help link sits above the footer, visually separate from the section nav */
+.sidebar-help { margin-top: auto; padding: 0 16px 12px; }
+.sidebar-help .nav-link { width: 100%; box-sizing: border-box; }

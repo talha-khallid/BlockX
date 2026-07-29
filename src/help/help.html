@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlockX Help</title>
+    <link rel="stylesheet" href="../options/options.css">
+    <link rel="stylesheet" href="help.css">
+</head>
+<body>
+    <div class="help-shell">
+        <header class="help-header">
+            <div class="help-brand">
+                <img src="../../assets/icons/icon128.png" alt="" class="help-logo">
+                <div>
+                    <h1>BlockX Help</h1>
+                    <p>Setting up shared settings, and locking the browser down so this cannot be walked around.</p>
+                </div>
+            </div>
+            <button id="back-btn" class="btn btn-secondary" type="button">Back to dashboard</button>
+        </header>
+
+        <nav class="help-tabs">
+            <button class="help-tab active" data-tab="setup" type="button">Setup</button>
+            <button class="help-tab" data-tab="harden" type="button">Lock down Chrome</button>
+        </nav>
+
+        <!-- ============================ SETUP ============================ -->
+        <section id="tab-setup" class="help-panel active">
+            <div class="help-card">
+                <h2>What syncs where</h2>
+                <p>BlockX keeps one set of settings across everything you use, through two layers that
+                   work independently. Whichever ones are available are kept in step automatically.</p>
+                <div class="layer-grid">
+                    <div class="layer">
+                        <span class="layer-tag on">No setup</span>
+                        <h3>Account sync</h3>
+                        <p>Every profile signed into the <em>same</em> Google account, on any device.
+                           Already running.</p>
+                    </div>
+                    <div class="layer">
+                        <span class="layer-tag">One command</span>
+                        <h3>Settings file</h3>
+                        <p>Every profile on <em>this machine</em>, whatever account each one uses —
+                           which account sync alone cannot do.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="help-card">
+                <h2>Why the file needs a helper</h2>
+                <p>A Chrome extension cannot read or write ordinary files. That is a hard boundary in
+                   the browser, not an oversight, so reaching a real file on disk needs a small program
+                   living outside the sandbox that the browser is told about explicitly. That is
+                   <code>native/blockx_host.py</code>: about a hundred lines that do nothing but read
+                   and write one JSON file. It never looks at what your settings mean.</p>
+                <p class="muted">Skip this and nothing breaks — you just get account sync on its own.</p>
+            </div>
+
+            <div class="help-card">
+                <h2>Install it</h2>
+                <p>Needs Python 3, which macOS and Linux already have. On Windows, install it from
+                   python.org and tick <strong>Add Python to PATH</strong>.</p>
+                <div class="cmd-block">
+                    <pre id="install-cmd">cd &lt;the BlockX folder&gt;/native
+python3 install.py</pre>
+                    <button class="copy-btn" data-copy="install-cmd" type="button">Copy</button>
+                </div>
+                <p>Then <strong>quit the browser completely and reopen it</strong> — registrations are
+                   only read at launch. Open the dashboard and look under
+                   <em>General &rarr; Shared Settings</em>: the settings file row turns green and shows
+                   its path.</p>
+                <p class="muted">You run this <strong>once per machine, not once per profile</strong>.
+                   Chrome keeps the registration at the root of its user data directory, so every
+                   profile inside it picks up the same one.</p>
+            </div>
+
+            <div class="help-card">
+                <h2>Where the file lives</h2>
+                <table class="help-table">
+                    <tbody>
+                        <tr><th>Linux</th><td><code>~/.config/blockx/settings.json</code></td></tr>
+                        <tr><th>macOS</th><td><code>~/Library/Application Support/BlockX/settings.json</code></td></tr>
+                        <tr><th>Windows</th><td><code>%APPDATA%\BlockX\settings.json</code></td></tr>
+                    </tbody>
+                </table>
+                <p>It appears the first time a setting changes. If it already exists when a new profile
+                   starts, that profile adopts it.</p>
+                <p class="muted">Under Flatpak the browser's own config path points inside its sandbox,
+                   so the helper deliberately ignores it and uses your real home. One file, shared by
+                   everything.</p>
+            </div>
+
+            <div class="help-card">
+                <h2>Editing the file by hand</h2>
+                <p>You are welcome to read it. Editing is another matter: everything BlockX writes is
+                   checksummed, so a file that no longer matches its checksum is treated as untrusted.
+                   Edits that <strong>tighten</strong> protection are accepted. Edits that
+                   <strong>loosen</strong> it are ignored and the file is rewritten.</p>
+                <p class="muted">That exists so the file cannot be used to skip the twelve-minute wait
+                   that removals go through. It is a deterrent, not a lock — the recipe is in the
+                   source, and anyone who reads it can get round it. Same as everything here: it works
+                   because you want it to.</p>
+            </div>
+
+            <div class="help-card">
+                <h2>When it does not work</h2>
+                <dl class="faq">
+                    <dt>The settings file row stays orange.</dt>
+                    <dd>Quit the browser completely and start it again. On Linux, check the installer
+                        actually listed the browser you use.</dd>
+
+                    <dt>"Specified native messaging host not found" in the console.</dt>
+                    <dd>The browser you are using was not among those the installer found. Run it again
+                        and read the list it prints.</dd>
+
+                    <dt>Nothing appears in the file.</dt>
+                    <dd>It is written on the first change. Toggle something in the dashboard and look
+                        again.</dd>
+
+                    <dt>Remove the helper.</dt>
+                    <dd><code>python3 install.py --uninstall</code>. Your settings file is left alone.</dd>
+                </dl>
+            </div>
+        </section>
+
+        <!-- =========================== HARDEN ============================ -->
+        <section id="tab-harden" class="help-panel">
+            <div class="help-card">
+                <h2>Make the browser enforce it</h2>
+                <p>An extension can be switched off from a menu. A browser policy cannot — it is read
+                   from a location only an administrator can write, and the browser applies it before
+                   any profile loads. Guest windows, new profiles and Incognito all bypass an extension
+                   entirely; this is the only thing that closes those.</p>
+                <p>Pick what you want, choose your system, and copy the one command it produces.</p>
+            </div>
+
+            <div class="help-card">
+                <h2>1. Choose what to enforce</h2>
+                <div id="option-list" class="option-list"></div>
+
+                <div id="update-url-row" class="update-url-row hidden">
+                    <label for="update-url">Update manifest URL</label>
+                    <input type="text" id="update-url" placeholder="https://example.com/updates.xml">
+                    <p class="muted">Force-install needs the extension served from a web address. Leave
+                       blank to use the Chrome Web Store URL, which only works once it is published there.</p>
+                </div>
+            </div>
+
+            <div class="help-card">
+                <h2>2. Choose your system</h2>
+                <div class="picker-row">
+                    <div class="picker">
+                        <label>Operating system</label>
+                        <div class="segmented" id="os-picker">
+                            <button class="seg active" data-os="linux" type="button">Linux</button>
+                            <button class="seg" data-os="macos" type="button">macOS</button>
+                            <button class="seg" data-os="windows" type="button">Windows</button>
+                        </div>
+                    </div>
+                    <div class="picker">
+                        <label for="browser-picker">Browser</label>
+                        <select id="browser-picker" class="help-select"></select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="help-card">
+                <h2>3. Run this</h2>
+                <div id="empty-note" class="empty-note">Choose at least one option above.</div>
+
+                <div id="command-area" class="hidden">
+                    <div class="cmd-block">
+                        <pre id="generated-cmd"></pre>
+                        <button class="copy-btn" data-copy="generated-cmd" type="button">Copy</button>
+                    </div>
+
+                    <h3>How to run it</h3>
+                    <ol id="run-steps" class="run-steps"></ol>
+
+                    <details class="revert">
+                        <summary>Undo all of this later</summary>
+                        <div class="cmd-block">
+                            <pre id="revert-cmd"></pre>
+                            <button class="copy-btn" data-copy="revert-cmd" type="button">Copy</button>
+                        </div>
+                        <p class="muted">Removes the policy and nothing else. Your BlockX settings are
+                           untouched.</p>
+                    </details>
+                </div>
+            </div>
+
+            <div class="help-card warn">
+                <h2>Read this before you run it</h2>
+                <ul class="warn-list">
+                    <li><strong>It needs an administrator password</strong>, because it writes where a
+                        normal user cannot. That is what stops you undoing it on a whim later.</li>
+                    <li><strong>It applies to every profile and every user of this browser on the
+                        machine</strong>, not just yours.</li>
+                    <li><strong>Turning off Developer Tools affects all web development.</strong> Skip
+                        that one if you write code on this machine.</li>
+                    <li><strong>Blocking the extensions page means you cannot manage any extension</strong>,
+                        including installing something you want later. Undo it with the revert command.</li>
+                    <li>Read the command before you run it. It is plain text and does exactly what is
+                        listed above — never paste something you have not read, from here or anywhere.</li>
+                </ul>
+            </div>
+        </section>
+    </div>
+
+    <div id="toast" class="toast-notification">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+        <span id="toast-text">Copied.</span>
+    </div>
+
+    <script src="policies.js"></script>
+    <script src="help.js"></script>
+</body>
+</html>
