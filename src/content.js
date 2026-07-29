@@ -322,8 +322,49 @@
     }
     button:focus-visible { outline: 2px solid #1900FF; outline-offset: 2px; }
 
+    .gate { margin: 0 0 22px; text-align: left; }
+    .gate-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #71717a;
+      margin-bottom: 8px;
+    }
+    .gate-phrase {
+      font-size: 13.5px;
+      line-height: 1.55;
+      color: #f9fafb;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin: 0 0 8px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      user-select: none;
+    }
+    .gate-input {
+      width: 100%;
+      box-sizing: border-box;
+      font-family: inherit;
+      font-size: 13.5px;
+      line-height: 1.5;
+      padding: 11px 13px;
+      border-radius: 10px;
+      border: 1px solid #3f3f46;
+      background: transparent;
+      color: #f9fafb;
+      resize: none;
+      display: block;
+    }
+    .gate-input::placeholder { color: #52525b; }
+    .gate-input:focus { outline: none; border-color: #1900FF; }
+
     .leave { background: #f9fafb; color: #111827; margin-bottom: 10px; }
     .leave:hover { background: #ffffff; }
+    .show:disabled { opacity: 0.35; cursor: not-allowed; }
+    .show:disabled:hover { color: #71717a; border-color: #3f3f46; }
 
     .show { background: transparent; color: #71717a; border-color: #3f3f46; }
     .show:hover { color: #f9fafb; border-color: #71717a; }
@@ -344,6 +385,10 @@
     :host([data-theme="light"]) p { color: #4b5563; }
     :host([data-theme="light"]) .leave { background: #111827; color: #ffffff; }
     :host([data-theme="light"]) .leave:hover { background: #000000; }
+    :host([data-theme="light"]) .gate-label { color: #6b7280; }
+    :host([data-theme="light"]) .gate-phrase { background: #f9fafb; color: #111827; }
+    :host([data-theme="light"]) .gate-input { border-color: #e5e7eb; color: #111827; }
+    :host([data-theme="light"]) .gate-input::placeholder { color: #9ca3af; }
     :host([data-theme="light"]) .show { color: #6b7280; border-color: #e5e7eb; }
     :host([data-theme="light"]) .show:hover { color: #111827; border-color: #9ca3af; }
 
@@ -429,6 +474,42 @@
     message.textContent = (CONFIG.SCAN_MESSAGE || '').trim()
       || 'This page looks explicit. Do you still want to open it?';
 
+    card.appendChild(mark);
+    card.appendChild(heading);
+    card.appendChild(message);
+
+    // Seeing the page anyway costs the same phrase the toolbar unlock asks for.
+    // The warning message above is untouched; this sits under it.
+    const phrase = (CONFIG.UNLOCK_PHRASE || '').trim();
+    let gateInput = null;
+
+    if (phrase) {
+      const gate = document.createElement('div');
+      gate.className = 'gate';
+
+      const gateLabel = document.createElement('span');
+      gateLabel.className = 'gate-label';
+      gateLabel.textContent = 'Type this to continue';
+
+      const gatePhrase = document.createElement('p');
+      gatePhrase.className = 'gate-phrase';
+      gatePhrase.textContent = phrase;
+
+      gateInput = document.createElement('textarea');
+      gateInput.className = 'gate-input';
+      gateInput.rows = 2;
+      gateInput.spellcheck = false;
+      gateInput.setAttribute('autocomplete', 'off');
+      gateInput.setAttribute('autocapitalize', 'off');
+      gateInput.setAttribute('autocorrect', 'off');
+      gateInput.placeholder = 'Type it exactly';
+
+      gate.appendChild(gateLabel);
+      gate.appendChild(gatePhrase);
+      gate.appendChild(gateInput);
+      card.appendChild(gate);
+    }
+
     const leaveBtn = document.createElement('button');
     leaveBtn.className = 'leave';
     leaveBtn.type = 'button';
@@ -441,7 +522,17 @@
     showBtn.className = 'show';
     showBtn.type = 'button';
     showBtn.textContent = 'Yes, show it';
+
+    if (gateInput) {
+      const collapse = (text) => text.trim().replace(/\s+/g, ' ');
+      showBtn.disabled = true;
+      gateInput.addEventListener('input', () => {
+        showBtn.disabled = collapse(gateInput.value) !== collapse(phrase);
+      });
+    }
+
     showBtn.addEventListener('click', () => {
+      if (showBtn.disabled) return;
       scanAcknowledged = true;
       scanPrompted = false;
       if (host.parentNode) host.parentNode.removeChild(host);
@@ -449,9 +540,6 @@
       dropBarrier();
     });
 
-    card.appendChild(mark);
-    card.appendChild(heading);
-    card.appendChild(message);
     card.appendChild(leaveBtn);
     card.appendChild(showBtn);
     wrap.appendChild(card);
