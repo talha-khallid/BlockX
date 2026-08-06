@@ -554,9 +554,40 @@
     const KEY_EVENTS = ['keydown', 'keypress', 'keyup'];
     KEY_EVENTS.forEach(type => window.addEventListener(type, keepKeys, true));
 
+    let tamperObserver = null;
+    let tamperInterval = null;
+
+    function enforceOverlayIntegrity() {
+      if (!scanPrompted || scanAcknowledged) return;
+
+      // 1. Ensure host overlay is in DOM and attached to documentElement
+      if (!host.parentNode || !document.documentElement.contains(host)) {
+        console.warn('[BlockX] Warning overlay element removed via DevTools — re-attaching.');
+        document.documentElement.appendChild(host);
+      }
+
+      // 2. Re-enforce overlay visibility and position styles
+      host.style.setProperty('all', 'initial', 'important');
+      host.style.setProperty('position', 'fixed', 'important');
+      host.style.setProperty('inset', '0', 'important');
+      host.style.setProperty('z-index', '2147483647', 'important');
+      host.style.setProperty('visibility', 'visible', 'important');
+      host.style.setProperty('display', 'block', 'important');
+      host.style.setProperty('opacity', '1', 'important');
+      host.style.setProperty('pointer-events', 'auto', 'important');
+
+      // 3. Ensure security barrier style tag is present and frozen
+      if (!securityBarrier.parentNode || !document.documentElement.contains(securityBarrier)) {
+        console.warn('[BlockX] Security barrier removed via DevTools — re-attaching.');
+        raiseBarrier(BARRIER_FROZEN);
+      }
+    }
+
     const reveal = () => {
       scanAcknowledged = true;
       scanPrompted = false;
+      if (tamperObserver) tamperObserver.disconnect();
+      if (tamperInterval) clearInterval(tamperInterval);
       KEY_EVENTS.forEach(type => window.removeEventListener(type, keepKeys, true));
       if (host.parentNode) host.parentNode.removeChild(host);
       thawMedia();
@@ -605,6 +636,24 @@
     raiseBarrier(BARRIER_FROZEN);
     freezeMedia();
     leaveBtn.focus();
+
+    // DevTools Anti-Tampering Protection: Self-healing observer & heartbeat poll
+    setTimeout(() => {
+      if (!scanPrompted || scanAcknowledged) return;
+
+      tamperObserver = new MutationObserver(() => {
+        enforceOverlayIntegrity();
+      });
+
+      tamperObserver.observe(document.documentElement, {
+        childList: true,
+        attributes: true,
+        subtree: true,
+        attributeFilter: ['style', 'class', 'hidden', 'id']
+      });
+
+      tamperInterval = setInterval(enforceOverlayIntegrity, 300);
+    }, 100);
   }
 
   function isBlockedDomain(hostname) {
