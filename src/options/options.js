@@ -1185,7 +1185,7 @@ function promptRemovalConfirmation(listId, stateKey, item) {
 
     const modal = document.getElementById('removal-modal');
     const itemNameEl = document.getElementById('removal-item-name');
-    const customMsgEl = document.getElementById('removal-custom-message');
+    const customMsgInput = document.getElementById('removal-custom-input');
     const phraseBoxEl = document.getElementById('removal-target-phrase');
     const inputEl = document.getElementById('removal-input');
     const errorEl = document.getElementById('removal-error');
@@ -1198,7 +1198,7 @@ function promptRemovalConfirmation(listId, stateKey, item) {
     if (itemNameEl) itemNameEl.textContent = item;
 
     const customMsg = (state.SCAN_MESSAGE || CONFIG.SCAN_MESSAGE || 'Remember why you set this protection up.').trim();
-    if (customMsgEl) customMsgEl.textContent = `"${customMsg}"`;
+    if (customMsgInput) customMsgInput.value = customMsg;
 
     const unlockPhrase = (state.UNLOCK_PHRASE || CONFIG.UNLOCK_PHRASE || 'I am choosing to break my own rule').trim();
     if (phraseBoxEl) phraseBoxEl.textContent = unlockPhrase;

@@ -544,21 +544,25 @@
                 <h2>Confirm Link Removal</h2>
                 
                 <div class="removal-custom-box">
-                    <span class="removal-custom-label">Custom Warning Message</span>
-                    <p id="removal-custom-message" class="removal-custom-text"></p>
+                    <span class="removal-custom-label">Your Custom Warning / Intention Message</span>
+                    <textarea id="removal-custom-input" class="scan-message" rows="2" readonly style="margin-top: 6px; font-size: 13px; font-style: italic; cursor: default; resize: none;"></textarea>
                 </div>
 
-                <p class="oath-question" style="margin-top: 16px;">
+                <p class="oath-question" style="margin-top: 14px;">
                     Are you sure you want to remove <strong id="removal-item-name"></strong>?
                 </p>
-                <p class="oath-note" style="margin-bottom: 12px;">
-                    To confirm you are not doing this for a wrong purpose, please retype the unlock phrase below:
+
+                <div class="removal-custom-box" style="border-left-color: var(--pending); margin-top: 10px;">
+                    <span class="removal-custom-label">Unlock Phrase to Retype</span>
+                    <div id="removal-target-phrase" class="removal-phrase-box" style="margin-top: 6px;"></div>
+                </div>
+
+                <p class="oath-note" style="margin-top: 12px; margin-bottom: 8px;">
+                    Type the phrase above into the lower input box to confirm you are not doing this for a wrong purpose:
                 </p>
 
-                <div id="removal-target-phrase" class="removal-phrase-box"></div>
-
-                <div class="input-row" style="margin-top: 14px; margin-bottom: 8px;">
-                    <input type="text" id="removal-input" placeholder="Type unlock phrase to confirm..." autocomplete="off">
+                <div class="input-row" style="margin-top: 8px; margin-bottom: 8px;">
+                    <input type="text" id="removal-input" placeholder="Type unlock phrase here to confirm..." autocomplete="off">
                 </div>
                 <div id="removal-error" class="error-msg hidden" style="margin-top: 0; margin-bottom: 14px;">
                     Phrase does not match. Please retype carefully.
