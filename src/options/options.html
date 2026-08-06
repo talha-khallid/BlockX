@@ -537,6 +537,39 @@
                 <button id="oath-cancel" class="oath-cancel" type="button">Cancel import</button>
             </div>
         </div>
+
+        <!-- Link Removal Confirmation Modal -->
+        <div id="removal-modal" class="oath-overlay hidden">
+            <div class="oath-card removal-card">
+                <h2>Confirm Link Removal</h2>
+                
+                <div class="removal-custom-box">
+                    <span class="removal-custom-label">Custom Warning Message</span>
+                    <p id="removal-custom-message" class="removal-custom-text"></p>
+                </div>
+
+                <p class="oath-question" style="margin-top: 16px;">
+                    Are you sure you want to remove <strong id="removal-item-name"></strong>?
+                </p>
+                <p class="oath-note" style="margin-bottom: 12px;">
+                    To confirm you are not doing this for a wrong purpose, please retype the unlock phrase below:
+                </p>
+
+                <div id="removal-target-phrase" class="removal-phrase-box"></div>
+
+                <div class="input-row" style="margin-top: 14px; margin-bottom: 8px;">
+                    <input type="text" id="removal-input" placeholder="Type unlock phrase to confirm..." autocomplete="off">
+                </div>
+                <div id="removal-error" class="error-msg hidden" style="margin-top: 0; margin-bottom: 14px;">
+                    Phrase does not match. Please retype carefully.
+                </div>
+
+                <div class="oath-actions">
+                    <button id="removal-confirm-btn" class="btn btn-primary" type="button">Confirm &amp; Remove</button>
+                    <button id="removal-cancel-btn" class="btn btn-secondary" type="button">Cancel</button>
+                </div>
+            </div>
+        </div>
     </div>
     <script src="../config.js"></script>
     <script src="options.js"></script>

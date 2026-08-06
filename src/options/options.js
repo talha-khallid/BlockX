@@ -22,6 +22,8 @@ const LIST_BINDINGS = [
 let pendingChanges = [];
 let pendingImport = null;
 let stagedImport = null;
+let stagedRemoval = null;
+let currentRemovalNonce = null;
 let countdownTimer = null;
 
 let state = {
@@ -94,11 +96,12 @@ async function init() {
     watchExternalChanges();
     warnBeforeLeaving();
 
-    // 5. Prevention: Tamper-proof the gateway
-    monitorGatewayTampering();
+    // 5. Prevention: Tamper-proof the gateway and UI modals
+    monitorUiTampering();
 
     // 6. Setup Import/Export Listeners
     setupBackupListeners();
+    setupRemovalModal();
 }
 
 // ------------------------------------------------------------------
@@ -254,7 +257,13 @@ function requestChange(listId, stateKey, item, op) {
     return true;
 }
 
-function requestRemoval(listId, stateKey, item) {
+function requestRemoval(listId, stateKey, item, isVerified = false, nonce = null) {
+    if (!isVerified || !nonce || nonce !== currentRemovalNonce) {
+        promptRemovalConfirmation(listId, stateKey, item);
+        return;
+    }
+    currentRemovalNonce = null; // consume single-use nonce
+
     if (requestChange(listId, stateKey, item, 'remove')) return;
 
     const index = state[stateKey].indexOf(item);
@@ -335,27 +344,75 @@ function warnBeforeLeaving() {
 }
 
 /**
- * Ensures the security gateway cannot be deleted or hidden via DevTools.
+ * Ensures the security gateway and removal confirmation modal cannot be deleted, hidden, or bypassed via DevTools.
  */
-function monitorGatewayTampering() {
-    if (!state.SECURITY_ENABLED) return;
+function monitorUiTampering() {
+    const checkIntegrity = () => {
+        // 1. Security Gateway Lock Integrity
+        if (state.SECURITY_ENABLED) {
+            const gateway = document.getElementById('security-gateway');
+            const isLocked = document.body.classList.contains('is-locked');
 
-    const observer = new MutationObserver((mutations) => {
-        const gateway = document.getElementById('security-gateway');
-        const isLocked = document.body.classList.contains('is-locked');
-        
-        // Safety: check if body still has the class before accessing gateway
-        if (isLocked) {
-            if (!gateway || (gateway.classList && gateway.classList.contains('hidden'))) {
-                // Tampering detected: either element deleted or hidden manually
-                window.location.reload(); 
+            if (!window._dashUnlocked && state.PASSWORD) {
+                if (!isLocked) {
+                    document.body.classList.add('is-locked');
+                }
+                if (!gateway || !document.body.contains(gateway)) {
+                    window.location.reload();
+                    return;
+                }
+                const style = window.getComputedStyle(gateway);
+                if (gateway.classList.contains('hidden') || style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0' || style.pointerEvents === 'none') {
+                    window.location.reload();
+                    return;
+                }
             }
         }
+
+        // 2. Removal Confirmation Modal Tamper Protection
+        if (stagedRemoval) {
+            const removalModal = document.getElementById('removal-modal');
+            if (!removalModal || !document.body.contains(removalModal)) {
+                abortTamperedRemoval();
+                return;
+            }
+            const style = window.getComputedStyle(removalModal);
+            if (removalModal.classList.contains('hidden') || style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+                abortTamperedRemoval();
+                return;
+            }
+        }
+    };
+
+    function abortTamperedRemoval() {
+        if (!stagedRemoval) return;
+        stagedRemoval = null;
+        currentRemovalNonce = null;
+        const removalModal = document.getElementById('removal-modal');
+        if (removalModal) removalModal.classList.add('hidden');
+        const inputEl = document.getElementById('removal-input');
+        if (inputEl) inputEl.value = '';
+        const errorEl = document.getElementById('removal-error');
+        if (errorEl) errorEl.classList.add('hidden');
+        showToast('DevTools tampering detected — removal cancelled.');
+        renderAllLists();
+    }
+
+    const observer = new MutationObserver(() => {
+        checkIntegrity();
     });
 
     if (document.body) {
-        observer.observe(document.body, { childList: true, attributes: true, subtree: true });
+        observer.observe(document.body, {
+            childList: true,
+            attributes: true,
+            subtree: true,
+            attributeFilter: ['class', 'style', 'hidden', 'type']
+        });
     }
+
+    // Continuous heartbeat ticker to prevent DevTools breakpoint/pause bypasses
+    setInterval(checkIntegrity, 400);
 }
 
 function handleSecurityGateway() {
@@ -397,6 +454,7 @@ function handleSecurityGateway() {
     };
 
     const unlock = () => {
+        window._dashUnlocked = true;
         gateway.classList.add('hidden');
         document.body.classList.remove('is-locked');
         if (errorMsg) errorMsg.classList.add('hidden');
@@ -804,7 +862,7 @@ function buildDeleteButton(listId, stateKey, item) {
     svg.appendChild(line2);
     deleteBtn.appendChild(svg);
 
-    deleteBtn.addEventListener('click', () => requestRemoval(listId, stateKey, item));
+    deleteBtn.addEventListener('click', () => promptRemovalConfirmation(listId, stateKey, item));
     return deleteBtn;
 }
 
@@ -1115,6 +1173,88 @@ function renderPendingImport() {
     banner.classList.remove('hidden');
     timer.setAttribute('data-expires-at', pendingImport.expiresAt);
     timer.textContent = formatCountdown(pendingImport.expiresAt - Date.now());
+}
+
+// ------------------------------------------------------------------
+// LINK REMOVAL CONFIRMATION MODAL
+// ------------------------------------------------------------------
+
+function promptRemovalConfirmation(listId, stateKey, item) {
+    currentRemovalNonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    stagedRemoval = { listId, stateKey, item, nonce: currentRemovalNonce };
+
+    const modal = document.getElementById('removal-modal');
+    const itemNameEl = document.getElementById('removal-item-name');
+    const customMsgEl = document.getElementById('removal-custom-message');
+    const phraseBoxEl = document.getElementById('removal-target-phrase');
+    const inputEl = document.getElementById('removal-input');
+    const errorEl = document.getElementById('removal-error');
+
+    if (!modal) {
+        requestRemoval(listId, stateKey, item, true, currentRemovalNonce);
+        return;
+    }
+
+    if (itemNameEl) itemNameEl.textContent = item;
+
+    const customMsg = (state.SCAN_MESSAGE || CONFIG.SCAN_MESSAGE || 'Remember why you set this protection up.').trim();
+    if (customMsgEl) customMsgEl.textContent = `"${customMsg}"`;
+
+    const unlockPhrase = (state.UNLOCK_PHRASE || CONFIG.UNLOCK_PHRASE || 'I am choosing to break my own rule').trim();
+    if (phraseBoxEl) phraseBoxEl.textContent = unlockPhrase;
+
+    if (inputEl) inputEl.value = '';
+    if (errorEl) errorEl.classList.add('hidden');
+
+    modal.classList.remove('hidden');
+    if (inputEl) setTimeout(() => inputEl.focus(), 100);
+}
+
+function hideRemovalModal() {
+    const modal = document.getElementById('removal-modal');
+    if (modal) modal.classList.add('hidden');
+    stagedRemoval = null;
+    currentRemovalNonce = null;
+}
+
+function setupRemovalModal() {
+    const confirmBtn = document.getElementById('removal-confirm-btn');
+    const cancelBtn = document.getElementById('removal-cancel-btn');
+    const inputEl = document.getElementById('removal-input');
+    const errorEl = document.getElementById('removal-error');
+
+    const handleConfirm = () => {
+        if (!stagedRemoval) {
+            hideRemovalModal();
+            return;
+        }
+
+        const requiredPhrase = (state.UNLOCK_PHRASE || CONFIG.UNLOCK_PHRASE || 'I am choosing to break my own rule').trim();
+        const typedInput = inputEl ? inputEl.value.trim() : '';
+
+        const collapse = text => text.replace(/\s+/g, ' ').toLowerCase();
+
+        if (collapse(typedInput) === collapse(requiredPhrase)) {
+            const { listId, stateKey, item, nonce } = stagedRemoval;
+            hideRemovalModal();
+            requestRemoval(listId, stateKey, item, true, nonce);
+        } else {
+            if (errorEl) errorEl.classList.remove('hidden');
+            if (inputEl) inputEl.focus();
+        }
+    };
+
+    if (confirmBtn) confirmBtn.addEventListener('click', handleConfirm);
+    if (cancelBtn) cancelBtn.addEventListener('click', hideRemovalModal);
+
+    if (inputEl) {
+        inputEl.addEventListener('input', () => {
+            if (errorEl) errorEl.classList.add('hidden');
+        });
+        inputEl.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleConfirm();
+        });
+    }
 }
 
 document.addEventListener('DOMContentLoaded', init);
