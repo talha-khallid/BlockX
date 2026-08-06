@@ -7,11 +7,16 @@
   // Loading state: nothing is painted at all.
   const BARRIER_OPAQUE = 'html { visibility: hidden !important; opacity: 0 !important; background: #ffffff !important; }';
 
-  // Prompt state: the page paints again so it can sit behind the frosted
-  // overlay, but it is frozen — no scrolling, no clicks, no text selection.
+  // Prompt state: root-level 80px blur & freeze on html and body so content
+  // remains completely unreadable even if overlay elements are tampered with.
   const BARRIER_FROZEN = `
-    html { overflow: hidden !important; }
-    body { pointer-events: none !important; user-select: none !important; }
+    html, body {
+      filter: blur(80px) saturate(0.2) !important;
+      -webkit-filter: blur(80px) saturate(0.2) !important;
+      overflow: hidden !important;
+      pointer-events: none !important;
+      user-select: none !important;
+    }
   `;
 
   const securityBarrier = document.createElement('style');
@@ -566,7 +571,7 @@
         document.documentElement.appendChild(host);
       }
 
-      // 2. Only re-enforce overlay styles if DevTools altered visibility or position
+      // 2. Re-enforce overlay visibility and position styles if altered
       const style = window.getComputedStyle(host);
       if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0' || style.pointerEvents === 'none') {
         console.warn('[BlockX] Warning overlay hidden via DevTools — restoring visibility.');
@@ -580,9 +585,9 @@
         host.style.setProperty('pointer-events', 'auto', 'important');
       }
 
-      // 3. Ensure security barrier style tag is present and frozen
-      if (!securityBarrier.parentNode || !document.documentElement.contains(securityBarrier)) {
-        console.warn('[BlockX] Security barrier removed via DevTools — re-attaching.');
+      // 3. Ensure security barrier style tag is present and enforcing root blur
+      if (!securityBarrier.parentNode || !document.documentElement.contains(securityBarrier) || securityBarrier.textContent !== BARRIER_FROZEN) {
+        console.warn('[BlockX] Security barrier tampered with via DevTools — re-attaching.');
         raiseBarrier(BARRIER_FROZEN);
       }
     }
