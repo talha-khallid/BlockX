@@ -566,15 +566,19 @@
         document.documentElement.appendChild(host);
       }
 
-      // 2. Re-enforce overlay visibility and position styles
-      host.style.setProperty('all', 'initial', 'important');
-      host.style.setProperty('position', 'fixed', 'important');
-      host.style.setProperty('inset', '0', 'important');
-      host.style.setProperty('z-index', '2147483647', 'important');
-      host.style.setProperty('visibility', 'visible', 'important');
-      host.style.setProperty('display', 'block', 'important');
-      host.style.setProperty('opacity', '1', 'important');
-      host.style.setProperty('pointer-events', 'auto', 'important');
+      // 2. Only re-enforce overlay styles if DevTools altered visibility or position
+      const style = window.getComputedStyle(host);
+      if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0' || style.pointerEvents === 'none') {
+        console.warn('[BlockX] Warning overlay hidden via DevTools — restoring visibility.');
+        host.style.setProperty('all', 'initial', 'important');
+        host.style.setProperty('position', 'fixed', 'important');
+        host.style.setProperty('inset', '0', 'important');
+        host.style.setProperty('z-index', '2147483647', 'important');
+        host.style.setProperty('visibility', 'visible', 'important');
+        host.style.setProperty('display', 'block', 'important');
+        host.style.setProperty('opacity', '1', 'important');
+        host.style.setProperty('pointer-events', 'auto', 'important');
+      }
 
       // 3. Ensure security barrier style tag is present and frozen
       if (!securityBarrier.parentNode || !document.documentElement.contains(securityBarrier)) {
@@ -762,6 +766,7 @@
   };
 
   const observer = new MutationObserver(() => {
+    if (scanPrompted || scanAcknowledged) return;
     if (document.title) verifyPageSafety();
     // Late-loading content (infinite scroll, SPA routes) gets a throttled pass.
     scheduleRescan();
