@@ -554,9 +554,38 @@
     const KEY_EVENTS = ['keydown', 'keypress', 'keyup'];
     KEY_EVENTS.forEach(type => window.addEventListener(type, keepKeys, true));
 
+    let promptTamperObserver = null;
+    let promptTamperInterval = null;
+
+    function checkPromptIntegrity() {
+      if (!scanPrompted || scanAcknowledged) return;
+
+      const isHostAttached = host && host.parentNode && document.documentElement.contains(host);
+      const isBarrierAttached = securityBarrier && securityBarrier.parentNode && document.documentElement.contains(securityBarrier);
+
+      let isHostVisible = false;
+      if (isHostAttached) {
+        const style = window.getComputedStyle(host);
+        isHostVisible = style.display !== 'none' &&
+                        style.visibility !== 'hidden' &&
+                        style.opacity !== '0' &&
+                        style.pointerEvents !== 'none';
+      }
+
+      if (!isHostAttached || !isBarrierAttached || !isHostVisible) {
+        console.warn('[BlockX] DevTools tampering detected on warning overlay. Enforcing block.');
+        if (promptTamperObserver) promptTamperObserver.disconnect();
+        if (promptTamperInterval) clearInterval(promptTamperInterval);
+        raiseBarrier('html { display: none !important; opacity: 0 !important; visibility: hidden !important; background: #000000 !important; }');
+        handleBlock();
+      }
+    }
+
     const reveal = () => {
       scanAcknowledged = true;
       scanPrompted = false;
+      if (promptTamperObserver) promptTamperObserver.disconnect();
+      if (promptTamperInterval) clearInterval(promptTamperInterval);
       KEY_EVENTS.forEach(type => window.removeEventListener(type, keepKeys, true));
       if (host.parentNode) host.parentNode.removeChild(host);
       thawMedia();
@@ -605,6 +634,20 @@
     raiseBarrier(BARRIER_FROZEN);
     freezeMedia();
     leaveBtn.focus();
+
+    // DevTools Anti-Tampering Protection: Monitor overlay & barrier elements continuously
+    promptTamperObserver = new MutationObserver(() => {
+      checkPromptIntegrity();
+    });
+
+    promptTamperObserver.observe(document.documentElement, {
+      childList: true,
+      attributes: true,
+      subtree: true,
+      attributeFilter: ['class', 'style', 'hidden', 'id']
+    });
+
+    promptTamperInterval = setInterval(checkPromptIntegrity, 250);
   }
 
   function isBlockedDomain(hostname) {
