@@ -234,7 +234,15 @@
     if (!hits) return false;
 
     console.log(`[BlockX] Content scan flagged ${hits.size} distinct terms.`);
-    showScanPrompt();
+    try {
+      showScanPrompt();
+    } catch (e) {
+      // If the card can never be built, the page still must not be readable:
+      // keep the freeze barrier up so the blur holds without the prompt.
+      console.warn('[BlockX] Prompt failed; keeping page blurred.', e);
+      raiseBarrier(BARRIER_FROZEN);
+      freezeMedia();
+    }
     return true;
   }
 
@@ -294,6 +302,8 @@
       box-sizing: border-box;
       width: 100%;
       max-width: 440px;
+      max-height: calc(100vh - 48px);
+      overflow-y: auto;
       padding: 40px 36px;
       text-align: center;
       border-radius: 20px;
@@ -318,20 +328,51 @@
     .mark svg { width: 26px; height: 26px; }
 
     h2 {
-      margin: 0 0 12px;
+      margin: 0 0 16px;
       font-size: 20px;
       font-weight: 700;
       letter-spacing: -0.02em;
       color: inherit;
     }
 
-    p {
-      margin: 0 0 30px;
-      font-size: 15px;
-      line-height: 1.6;
-      color: #a1a1aa;
+    /* The user's own warning words sit in a soft inset panel, the same
+       language the dashboard modal uses, so they read as *their* message,
+       not as system text. dir="auto" on the <p> keeps RTL scripts natural. */
+    .msg {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 16px 18px;
+      margin: 0 0 26px;
+      max-height: 38vh;
+      overflow-y: auto;
+    }
+    .msg-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #71717a;
+      margin-bottom: 8px;
+    }
+    .msg p {
+      margin: 0;
+      font-size: 15.5px;
+      line-height: 1.7;
+      color: #d4d4d8;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
+    }
+
+    /* The card holds two views: the warning, then the "are you sure" gate. */
+    .view[hidden] { display: none !important; }
+
+    .hint {
+      margin: 0 0 26px;
+      font-size: 14.5px;
+      line-height: 1.65;
+      color: #a1a1aa;
     }
 
     button {
@@ -368,7 +409,10 @@
       box-shadow: 0 32px 64px -12px rgba(0, 0, 0, 0.18);
     }
     :host([data-theme="light"]) .mark { background: rgba(25, 0, 255, 0.06); color: #1900FF; }
-    :host([data-theme="light"]) p { color: #4b5563; }
+    :host([data-theme="light"]) .msg { background: #f9fafb; border-color: #e5e7eb; }
+    :host([data-theme="light"]) .msg p { color: #374151; }
+    :host([data-theme="light"]) .msg-label { color: #6b7280; }
+    :host([data-theme="light"]) .hint { color: #6b7280; }
     :host([data-theme="light"]) .leave { background: #111827; color: #ffffff; }
     :host([data-theme="light"]) .leave:hover { background: #000000; }
     :host([data-theme="light"]) .show { color: #6b7280; border-color: #e5e7eb; }
@@ -407,6 +451,34 @@
       : 'dark';
   }
 
+  // Self-healing runs on busy pages whose own scripts constantly touch the
+  // DOM; log each kind of repair once so the console is not spammed while
+  // the protection quietly holds.
+  const tamperNotes = new Set();
+  function noteTamper(key, msg) {
+    if (tamperNotes.has(key)) return;
+    tamperNotes.add(key);
+    console.warn(msg);
+  }
+
+  // The little rounded icon tile at the top of each card view.
+  function makeMark(pathD) {
+    const box = document.createElement('div');
+    box.className = 'mark';
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', pathD);
+    svg.appendChild(path);
+    box.appendChild(svg);
+    return box;
+  }
+
   /**
    * Renders the warning inside a closed shadow root so page CSS cannot reach
    * it. The host is attached to <html> rather than <body> so the page itself
@@ -435,30 +507,45 @@
     const card = document.createElement('div');
     card.className = 'card';
 
-    const mark = document.createElement('div');
-    mark.className = 'mark';
-    const shield = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    shield.setAttribute('viewBox', '0 0 24 24');
-    shield.setAttribute('fill', 'none');
-    shield.setAttribute('stroke', 'currentColor');
-    shield.setAttribute('stroke-width', '2');
-    shield.setAttribute('stroke-linecap', 'round');
-    shield.setAttribute('stroke-linejoin', 'round');
-    const shieldPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    shieldPath.setAttribute('d', 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z');
-    shield.appendChild(shieldPath);
-    mark.appendChild(shield);
+    // Stage 1 — the warning itself, carrying the user's own message.
+    const view1 = document.createElement('div');
+    view1.className = 'view';
 
     const heading = document.createElement('h2');
     heading.textContent = 'Explicit content detected';
 
     const message = document.createElement('p');
+    message.dir = 'auto';
     message.textContent = (CONFIG.WEAKENING_MESSAGE || '').trim()
       || 'This page looks explicit. Do you still want to open it?';
 
-    card.appendChild(mark);
-    card.appendChild(heading);
-    card.appendChild(message);
+    const msgBox = document.createElement('div');
+    msgBox.className = 'msg';
+    const msgLabel = document.createElement('span');
+    msgLabel.className = 'msg-label';
+    msgLabel.textContent = 'Your warning message';
+    msgBox.appendChild(msgLabel);
+    msgBox.appendChild(message);
+
+    view1.appendChild(makeMark('M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'));
+    view1.appendChild(heading);
+    view1.appendChild(msgBox);
+
+    // Stage 2 — a second, plainer gate shown after the first "yes".
+    const view2 = document.createElement('div');
+    view2.className = 'view';
+    view2.hidden = true;
+
+    const heading2 = document.createElement('h2');
+    heading2.textContent = 'Are you sure?';
+
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent = 'This page will be unblurred and shown. Only continue if you truly mean to.';
+
+    view2.appendChild(makeMark('M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01'));
+    view2.appendChild(heading2);
+    view2.appendChild(hint);
 
     const leaveBtn = document.createElement('button');
     leaveBtn.className = 'leave';
@@ -492,14 +579,14 @@
 
       // 1. Ensure host overlay is in DOM and attached to documentElement
       if (!host.parentNode || !document.documentElement.contains(host)) {
-        console.warn('[BlockX] Warning overlay element removed via DevTools — re-attaching.');
+        noteTamper('host', '[BlockX] Warning overlay removed — re-attaching.');
         document.documentElement.appendChild(host);
       }
 
       // 2. Re-enforce overlay visibility and position styles if altered
       const style = window.getComputedStyle(host);
       if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0' || style.pointerEvents === 'none') {
-        console.warn('[BlockX] Warning overlay hidden via DevTools — restoring visibility.');
+        noteTamper('host-style', '[BlockX] Warning overlay hidden — restoring visibility.');
         host.style.setProperty('all', 'initial', 'important');
         host.style.setProperty('position', 'fixed', 'important');
         host.style.setProperty('inset', '0', 'important');
@@ -510,9 +597,14 @@
         host.style.setProperty('pointer-events', 'auto', 'important');
       }
 
-      // 3. Ensure security barrier style tag is present and enforcing blur
-      if (!securityBarrier.parentNode || !document.documentElement.contains(securityBarrier) || securityBarrier.textContent !== BARRIER_FROZEN) {
-        console.warn('[BlockX] Security barrier tampered with via DevTools — re-attaching.');
+      // 3. Ensure the barrier is attached and the page is actually blurred.
+      //    Checking the rendered effect instead of the exact CSS text means
+      //    a site that re-serialises or tidies style tags cannot trip a
+      //    false tamper alarm — only a real loss of the blur heals+logs.
+      const bodyStyle = document.body ? window.getComputedStyle(document.body) : null;
+      const blurred = !!(bodyStyle && (bodyStyle.filter || bodyStyle.webkitFilter || '').includes('blur'));
+      if (!document.documentElement.contains(securityBarrier) || !blurred) {
+        noteTamper('barrier', '[BlockX] Security barrier removed or weakened — re-attaching.');
         raiseBarrier(BARRIER_FROZEN);
       }
 
@@ -524,7 +616,7 @@
         if (node === document.head || node === document.body) continue;
         if (node === securityBarrier || node === host) continue;
         if (HEAD_LEVEL[node.nodeName]) continue;
-        console.warn('[BlockX] Content moved outside <body> via DevTools — moving back.');
+        noteTamper('stray', '[BlockX] Content moved outside <body> — moving back.');
         if (document.body) document.body.appendChild(node);
       }
     }
@@ -540,11 +632,36 @@
       dropBarrier();
     };
 
-    // The warning message above is the whole gate: a plain yes or no.
-    showBtn.addEventListener('click', reveal);
+    const sureBtn = document.createElement('button');
+    sureBtn.className = 'leave';
+    sureBtn.type = 'button';
+    sureBtn.textContent = "Yes, I'm sure — show it";
 
-    card.appendChild(leaveBtn);
-    card.appendChild(showBtn);
+    const backBtn = document.createElement('button');
+    backBtn.className = 'show';
+    backBtn.type = 'button';
+    backBtn.textContent = 'No, go back';
+
+    // The first "yes" only moves to the second question; the page is revealed
+    // by the second "yes" alone. "No, go back" returns to the blurred warning.
+    showBtn.addEventListener('click', () => {
+      view1.hidden = true;
+      view2.hidden = false;
+      sureBtn.focus();
+    });
+    backBtn.addEventListener('click', () => {
+      view2.hidden = true;
+      view1.hidden = false;
+      leaveBtn.focus();
+    });
+    sureBtn.addEventListener('click', reveal);
+
+    view1.appendChild(leaveBtn);
+    view1.appendChild(showBtn);
+    view2.appendChild(sureBtn);
+    view2.appendChild(backBtn);
+    card.appendChild(view1);
+    card.appendChild(view2);
     wrap.appendChild(card);
     root.appendChild(style);
     root.appendChild(wrap);
