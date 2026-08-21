@@ -7,6 +7,7 @@ const sections = {
     keywords: { title: "Content Filtering", subtitle: "Define patterns to block based on page content." },
     pages: { title: "Page Link Restriction", subtitle: "Filter traffic to specific URLs and paths." },
     scanning: { title: "Content Scanning", subtitle: "Catch explicit pages on sites that are not on any list." },
+    friction: { title: "Friction", subtitle: "The warning message you must read before loosening your own protection." },
     security: { title: "Security Protection", subtitle: "Secure your configuration with a dashboard password." }
 };
 
@@ -19,12 +20,8 @@ const LIST_BINDINGS = [
     { inputId: 'scan-excluded-input', btnId: 'add-scan-excluded-btn', listId: 'scan-excluded-list', stateKey: 'CUSTOM_SCAN_EXCLUDED' }
 ];
 
-let pendingChanges = [];
-let pendingImport = null;
 let stagedImport = null;
-let stagedRemoval = null;
-let currentRemovalNonce = null;
-let countdownTimer = null;
+let stagedWeakening = null;
 
 let state = {
     BLOCK_METHOD: 'blocked_page',
@@ -35,9 +32,9 @@ let state = {
     CUSTOM_EXACT_PAGES: [],
     CUSTOM_ALLOWED_DOMAINS: [],
     CUSTOM_SCAN_EXCLUDED: [],
-    SCAN_MESSAGE: '',
     SCAN_SENSITIVITY: 2,
     UNLOCK_PHRASE: '',
+    WEAKENING_MESSAGE: '',
     ACTIVE_GAME_INDEX: -1,
     SECURITY_ENABLED: false,
     PASSWORD: '',
@@ -85,27 +82,24 @@ async function init() {
         });
     }
 
-    // 4. Load scheduled removals and start their countdowns
+    // 4. Settings UI
     setupScanSettings();
+    setupWeakeningSettings();
     setupImportOath();
     setupSyncStatus();
-    await refreshPendingState();
     renderAllLists();
-    renderPendingImport();
-    startCountdownTicker();
     watchExternalChanges();
-    warnBeforeLeaving();
 
     // 5. Prevention: Tamper-proof the gateway and UI modals
     monitorUiTampering();
 
     // 6. Setup Import/Export Listeners
     setupBackupListeners();
-    setupRemovalModal();
+    setupWeakeningModal();
 }
 
 // ------------------------------------------------------------------
-// DELAYED REMOVAL
+// LISTS
 // ------------------------------------------------------------------
 
 function renderAllLists() {
@@ -113,28 +107,6 @@ function renderAllLists() {
 }
 
 function setupScanSettings() {
-    const messageInput = document.getElementById('scan-message');
-    const saveBtn = document.getElementById('save-scan-message-btn');
-
-    if (messageInput) {
-        messageInput.value = state.SCAN_MESSAGE || '';
-
-        const saveMessage = () => {
-            const value = messageInput.value.trim();
-            if (value === (state.SCAN_MESSAGE || '')) return;
-            state.SCAN_MESSAGE = value;
-            saveState();
-        };
-
-        messageInput.addEventListener('blur', saveMessage);
-        if (saveBtn) {
-            saveBtn.addEventListener('click', () => {
-                saveMessage();
-                showToast('Warning message saved.');
-            });
-        }
-    }
-
     const phraseInput = document.getElementById('unlock-phrase');
     const phraseBtn = document.getElementById('save-unlock-phrase-btn');
     if (phraseInput) {
@@ -220,87 +192,122 @@ function renderSyncStatus() {
     });
 }
 
-function pendingFor(stateKey, value) {
-    return pendingChanges.find(p => p.listKey === stateKey && p.value === value) || null;
+// ------------------------------------------------------------------
+// WARNING-MESSAGE FRICTION
+// ------------------------------------------------------------------
+// A change that loosens protection is never applied silently: the user's
+// own message pops up and the change applies the moment it is confirmed.
+// No timer and nothing to retype anywhere in that path.
+
+const LIST_LABELS = {
+    CUSTOM_DOMAINS: 'Restricted Domains',
+    CUSTOM_KEYWORDS: 'Keywords',
+    CUSTOM_PAGES: 'Restricted Pages',
+    CUSTOM_EXACT_PAGES: 'Exact Pages',
+    CUSTOM_ALLOWED_DOMAINS: 'Whitelist',
+    CUSTOM_SCAN_EXCLUDED: 'Scan Exclusions'
+};
+
+function describeWeakeningAction(staged) {
+    if (staged.op === 'remove') {
+        const label = LIST_LABELS[staged.stateKey] || staged.stateKey;
+        return `You are removing "${staged.value}" from ${label}. This weakens your protection.`;
+    }
+    if (staged.stateKey === 'CUSTOM_ALLOWED_DOMAINS') {
+        return `You are adding "${staged.value}" to the whitelist. It will bypass every blocking rule and never be scanned.`;
+    }
+    return `You are exempting "${staged.value}" from content scanning.`;
 }
 
-function refreshPendingState() {
-    return new Promise((resolve) => {
-        chrome.runtime.sendMessage({ action: 'getPendingChanges' }, (response) => {
-            pendingChanges = (response && response.pending) || [];
-            pendingImport = (response && response.pendingImport) || null;
-            resolve();
-        });
-    });
-}
+function promptWeakeningWarning(staged) {
+    stagedWeakening = staged;
 
-/**
- * Whichever direction weakens protection waits out the cooling-off period;
- * the opposite direction applies straight away. Taking an entry OFF a
- * blocklist weakens it, putting one ON the scan exclusions weakens it.
- */
-function requestChange(listId, stateKey, item, op) {
-    if (!isDelayed(stateKey, op)) return false;
+    const modal = document.getElementById('weakening-modal');
+    const textEl = document.getElementById('weakening-warning-text');
+    const descEl = document.getElementById('weakening-action-desc');
 
-    chrome.runtime.sendMessage(
-        { action: 'schedulePendingChange', listKey: stateKey, value: item, op },
-        async (response) => {
-            if (!response || !response.record) {
-                showToast('Could not schedule that change.');
-                return;
-            }
-            await refreshPendingState();
-            renderList(listId, stateKey);
-            showToast(`Scheduled. Keep this tab open for ${formatCountdown(delayFor(stateKey, op))}.`);
-        }
-    );
-    return true;
-}
-
-function requestRemoval(listId, stateKey, item, isVerified = false, nonce = null) {
-    if (!isVerified || !nonce || nonce !== currentRemovalNonce) {
-        promptRemovalConfirmation(listId, stateKey, item);
+    if (!modal) {
+        applyWeakeningChange(staged);
+        stagedWeakening = null;
         return;
     }
-    currentRemovalNonce = null; // consume single-use nonce
 
-    if (requestChange(listId, stateKey, item, 'remove')) return;
+    const message = (state.WEAKENING_MESSAGE || CONFIG.WEAKENING_MESSAGE || '').trim()
+        || 'Remember why you set this protection up.';
+    if (textEl) textEl.textContent = message;
+    if (descEl) descEl.textContent = describeWeakeningAction(staged);
 
-    const index = state[stateKey].indexOf(item);
-    if (index === -1) return;
-    state[stateKey].splice(index, 1);
+    modal.classList.remove('hidden');
+}
+
+function hideWeakeningModal() {
+    const modal = document.getElementById('weakening-modal');
+    if (modal) modal.classList.add('hidden');
+    stagedWeakening = null;
+}
+
+function applyWeakeningChange(staged) {
+    const { listId, stateKey, value, op } = staged;
+    if (op === 'add') {
+        if (state[stateKey].includes(value)) return;
+        state[stateKey].push(value);
+    } else {
+        const index = state[stateKey].indexOf(value);
+        if (index === -1) return;
+        state[stateKey].splice(index, 1);
+    }
     renderList(listId, stateKey);
     saveState();
 }
 
-function cancelRemoval(listId, stateKey, id) {
-    chrome.runtime.sendMessage({ action: 'cancelPendingChange', id }, async () => {
-        await refreshPendingState();
-        renderList(listId, stateKey);
-        showToast('Cancelled — nothing changed.');
-    });
+function setupWeakeningModal() {
+    const proceedBtn = document.getElementById('weakening-proceed-btn');
+    const goBackBtn = document.getElementById('weakening-goback-btn');
+
+    if (proceedBtn) {
+        proceedBtn.addEventListener('click', () => {
+            if (!stagedWeakening) return hideWeakeningModal();
+            const staged = stagedWeakening;
+            hideWeakeningModal();
+            applyWeakeningChange(staged);
+            showToast('Change applied.');
+        });
+    }
+
+    if (goBackBtn) {
+        goBackBtn.addEventListener('click', () => {
+            hideWeakeningModal();
+            showToast('Nothing changed — protection stays as it was.');
+        });
+    }
 }
 
-function startCountdownTicker() {
-    if (countdownTimer) clearInterval(countdownTimer);
-    countdownTimer = setInterval(() => {
-        if (pendingChanges.length === 0 && !pendingImport) return;
-        document.querySelectorAll('.pending-timer').forEach(el => {
-            const expiresAt = parseInt(el.getAttribute('data-expires-at'), 10);
-            const remaining = expiresAt - Date.now();
-            const row = el.closest('.pending-import-banner, .pending-add');
-            const elapsed = row ? 'applying…' : 'removing…';
-            const text = remaining > 0 ? formatCountdown(remaining) : elapsed;
-            // Only touch the DOM on a real change — the gateway's tamper observer
-            // watches this subtree.
-            if (el.textContent !== text) el.textContent = text;
-        });
-    }, 1000);
+function setupWeakeningSettings() {
+    const messageInput = document.getElementById('weakening-message');
+    const saveBtn = document.getElementById('save-weakening-message-btn');
+    if (messageInput) {
+        messageInput.value = state.WEAKENING_MESSAGE || '';
+
+        const saveMessage = () => {
+            const value = messageInput.value.trim();
+            if (value === (state.WEAKENING_MESSAGE || '')) return;
+            state.WEAKENING_MESSAGE = value;
+            saveState();
+        };
+
+        messageInput.addEventListener('blur', saveMessage);
+        if (saveBtn) {
+            saveBtn.addEventListener('click', () => {
+                saveMessage();
+                showToast('Warning message saved.');
+            });
+        }
+    }
 }
 
 /**
- * The service worker applies removals directly to storage, so mirror any change
- * it makes back into the dashboard.
+ * Changes to storage land from the sync reconciliation too, so mirror any
+ * change back into the dashboard.
  */
 function watchExternalChanges() {
     chrome.storage.onChanged.addListener((changes, area) => {
@@ -314,37 +321,13 @@ function watchExternalChanges() {
             }
         });
 
-        if (changes.PENDING_CHANGES) {
-            pendingChanges = changes.PENDING_CHANGES.newValue || [];
-            dirty = true;
-        }
-
-        if (changes.PENDING_IMPORT) {
-            pendingImport = changes.PENDING_IMPORT.newValue || null;
-            renderPendingImport();
-        }
-
         if (dirty) renderAllLists();
-    });
-
-    // A deferred import rewrites every setting at once, so start clean.
-    chrome.runtime.onMessage.addListener((request) => {
-        if (request && request.action === 'importApplied') {
-            window.location.reload();
-        }
-    });
-}
-
-function warnBeforeLeaving() {
-    window.addEventListener('beforeunload', (e) => {
-        if (pendingChanges.length === 0 && !pendingImport) return;
-        e.preventDefault();
-        e.returnValue = '';
     });
 }
 
 /**
- * Ensures the security gateway and removal confirmation modal cannot be deleted, hidden, or bypassed via DevTools.
+ * Ensures the security gateway and the weakening warning modal cannot be
+ * deleted, hidden, or bypassed via DevTools.
  */
 function monitorUiTampering() {
     const checkIntegrity = () => {
@@ -369,34 +352,19 @@ function monitorUiTampering() {
             }
         }
 
-        // 2. Removal Confirmation Modal Tamper Protection
-        if (stagedRemoval) {
-            const removalModal = document.getElementById('removal-modal');
-            if (!removalModal || !document.body.contains(removalModal)) {
-                abortTamperedRemoval();
+        // 2. Weakening Warning Modal Tamper Protection
+        if (stagedWeakening) {
+            const weakeningModal = document.getElementById('weakening-modal');
+            if (!weakeningModal || !document.body.contains(weakeningModal)) {
+                stagedWeakening = null;
                 return;
             }
-            const style = window.getComputedStyle(removalModal);
-            if (removalModal.classList.contains('hidden') || style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
-                abortTamperedRemoval();
-                return;
+            const style = window.getComputedStyle(weakeningModal);
+            if (weakeningModal.classList.contains('hidden') || style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+                stagedWeakening = null;
             }
         }
     };
-
-    function abortTamperedRemoval() {
-        if (!stagedRemoval) return;
-        stagedRemoval = null;
-        currentRemovalNonce = null;
-        const removalModal = document.getElementById('removal-modal');
-        if (removalModal) removalModal.classList.add('hidden');
-        const inputEl = document.getElementById('removal-input');
-        if (inputEl) inputEl.value = '';
-        const errorEl = document.getElementById('removal-error');
-        if (errorEl) errorEl.classList.add('hidden');
-        showToast('DevTools tampering detected — removal cancelled.');
-        renderAllLists();
-    }
 
     const observer = new MutationObserver(() => {
         checkIntegrity();
@@ -537,9 +505,9 @@ function saveState() {
         CUSTOM_EXACT_PAGES: state.CUSTOM_EXACT_PAGES,
         CUSTOM_ALLOWED_DOMAINS: state.CUSTOM_ALLOWED_DOMAINS,
         CUSTOM_SCAN_EXCLUDED: state.CUSTOM_SCAN_EXCLUDED,
-        SCAN_MESSAGE: state.SCAN_MESSAGE,
         SCAN_SENSITIVITY: state.SCAN_SENSITIVITY,
         UNLOCK_PHRASE: state.UNLOCK_PHRASE,
+        WEAKENING_MESSAGE: state.WEAKENING_MESSAGE,
         ACTIVE_GAME_INDEX: state.ACTIVE_GAME_INDEX,
         SECURITY_ENABLED: state.SECURITY_ENABLED,
         PASSWORD: state.PASSWORD,
@@ -695,21 +663,13 @@ function setupListManager(inputId, btnId, listId, stateKey) {
         
         const finalizeAdd = (finalVal) => {
             if (!finalVal) return;
-
-            // Re-adding an entry that is counting down calls the removal off.
-            const pending = pendingFor(stateKey, finalVal);
-            if (pending) {
-                input.value = '';
-                if (pending.op !== 'add') cancelRemoval(listId, stateKey, pending.id);
-                return;
-            }
-
             if (state[stateKey].includes(finalVal)) return;
 
-            // Adding to the scan exclusions weakens protection, so it waits.
-            if (isDelayed(stateKey, 'add')) {
+            // Adding here weakens protection, so the user reads their own
+            // warning message first; the change applies the moment they say yes.
+            if (WEAKENING_ADDITION_LISTS.includes(stateKey)) {
                 input.value = '';
-                requestChange(listId, stateKey, finalVal, 'add');
+                promptWeakeningWarning({ listId, stateKey, value: finalVal, op: 'add' });
                 return;
             }
 
@@ -778,17 +738,8 @@ function renderList(listId, stateKey) {
     container.innerHTML = '';
 
     state[stateKey].forEach((item) => {
-        const pending = pendingFor(stateKey, item);
-        container.appendChild(pending
-            ? buildPendingRow(listId, stateKey, item, pending)
-            : buildRow(listId, stateKey, item));
+        container.appendChild(buildRow(listId, stateKey, item));
     });
-
-    // Entries waiting to be added are not in the list yet, so show them as
-    // ghost rows with their own countdown.
-    pendingChanges
-        .filter(p => p.listKey === stateKey && p.op === 'add' && !state[stateKey].includes(p.value))
-        .forEach(p => container.appendChild(buildPendingRow(listId, stateKey, p.value, p)));
 }
 
 function buildRow(listId, stateKey, item) {
@@ -822,25 +773,10 @@ function describeEntry(stateKey, item) {
     return rule ? SCAN_EXCLUSION_LABELS[rule.kind] : null;
 }
 
-function buildPendingRow(listId, stateKey, item, pending) {
-    const el = document.createElement('div');
-    el.className = pending.op === 'add' ? 'tag-item pending pending-add' : 'tag-item pending';
-
-    const span = document.createElement('span');
-    span.className = 'tag-label';
-    span.textContent = item;
-
-    el.appendChild(span);
-    el.appendChild(buildPendingControls(listId, stateKey, pending));
-    return el;
-}
-
 function buildDeleteButton(listId, stateKey, item) {
     const deleteBtn = document.createElement('div');
     deleteBtn.className = 'tag-delete';
-    deleteBtn.title = DELAYED_REMOVAL_LISTS.includes(stateKey)
-        ? `Schedule removal (${formatCountdown(delayFor(stateKey, 'remove'))} cooling-off)`
-        : 'Remove';
+    deleteBtn.title = 'Remove';
 
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 24 24');
@@ -862,35 +798,20 @@ function buildDeleteButton(listId, stateKey, item) {
     svg.appendChild(line2);
     deleteBtn.appendChild(svg);
 
-    deleteBtn.addEventListener('click', () => promptRemovalConfirmation(listId, stateKey, item));
+    deleteBtn.addEventListener('click', () => {
+        // Removing from a blocklist weakens protection: warning message and
+        // an explicit yes/no first. Anything else applies at once.
+        if (WEAKENING_REMOVAL_LISTS.includes(stateKey)) {
+            promptWeakeningWarning({ listId, stateKey, value: item, op: 'remove' });
+            return;
+        }
+        const index = state[stateKey].indexOf(item);
+        if (index === -1) return;
+        state[stateKey].splice(index, 1);
+        renderList(listId, stateKey);
+        saveState();
+    });
     return deleteBtn;
-}
-
-function buildPendingControls(listId, stateKey, pending) {
-    const isAdd = pending.op === 'add';
-
-    const group = document.createElement('div');
-    group.className = 'pending-controls';
-
-    const label = document.createElement('span');
-    label.className = 'pending-label';
-    label.textContent = isAdd ? 'Adding in' : 'Removing in';
-
-    const timer = document.createElement('span');
-    timer.className = 'pending-timer';
-    timer.setAttribute('data-expires-at', pending.expiresAt);
-    timer.textContent = formatCountdown(pending.expiresAt - Date.now());
-
-    const keepBtn = document.createElement('button');
-    keepBtn.className = 'tag-keep';
-    keepBtn.type = 'button';
-    keepBtn.textContent = isAdd ? 'Cancel' : 'Keep blocked';
-    keepBtn.addEventListener('click', () => cancelRemoval(listId, stateKey, pending.id));
-
-    group.appendChild(label);
-    group.appendChild(timer);
-    group.appendChild(keepBtn);
-    return group;
 }
 
 function populateGames() {
@@ -961,9 +882,9 @@ async function restore_options() {
             CUSTOM_EXACT_PAGES: [],
             CUSTOM_ALLOWED_DOMAINS: [],
             CUSTOM_SCAN_EXCLUDED: [],
-            SCAN_MESSAGE: CONFIG.SCAN_MESSAGE,
             SCAN_SENSITIVITY: 2,
             UNLOCK_PHRASE: CONFIG.UNLOCK_PHRASE,
+            WEAKENING_MESSAGE: CONFIG.WEAKENING_MESSAGE,
             ACTIVE_GAME_INDEX: -1,
             SECURITY_ENABLED: false,
             PASSWORD: '',
@@ -1020,9 +941,9 @@ function exportSettings() {
         "CUSTOM_EXACT_PAGES",
         "CUSTOM_ALLOWED_DOMAINS",
         "CUSTOM_SCAN_EXCLUDED",
-        "SCAN_MESSAGE",
         "SCAN_SENSITIVITY",
         "UNLOCK_PHRASE",
+        "WEAKENING_MESSAGE",
         "ACTIVE_GAME_INDEX",
         "SECURITY_ENABLED",
         "PASSWORD",
@@ -1076,9 +997,12 @@ function handleImport(event) {
                 CUSTOM_EXACT_PAGES: Array.isArray(imported.CUSTOM_EXACT_PAGES) ? imported.CUSTOM_EXACT_PAGES : [],
                 CUSTOM_ALLOWED_DOMAINS: Array.isArray(imported.CUSTOM_ALLOWED_DOMAINS) ? imported.CUSTOM_ALLOWED_DOMAINS : [],
                 CUSTOM_SCAN_EXCLUDED: Array.isArray(imported.CUSTOM_SCAN_EXCLUDED) ? imported.CUSTOM_SCAN_EXCLUDED : [],
-                SCAN_MESSAGE: typeof imported.SCAN_MESSAGE === 'string' ? imported.SCAN_MESSAGE : CONFIG.SCAN_MESSAGE,
                 SCAN_SENSITIVITY: typeof imported.SCAN_SENSITIVITY === 'number' ? imported.SCAN_SENSITIVITY : 2,
                 UNLOCK_PHRASE: (typeof imported.UNLOCK_PHRASE === 'string' && imported.UNLOCK_PHRASE.trim()) ? imported.UNLOCK_PHRASE : CONFIG.UNLOCK_PHRASE,
+                // Old backups stored the message under SCAN_MESSAGE.
+                WEAKENING_MESSAGE: typeof imported.WEAKENING_MESSAGE === 'string'
+                    ? imported.WEAKENING_MESSAGE
+                    : (typeof imported.SCAN_MESSAGE === 'string' ? imported.SCAN_MESSAGE : CONFIG.WEAKENING_MESSAGE),
                 ACTIVE_GAME_INDEX: typeof imported.ACTIVE_GAME_INDEX === 'number' ? imported.ACTIVE_GAME_INDEX : -1,
                 SECURITY_ENABLED: !!imported.SECURITY_ENABLED,
                 PASSWORD: imported.PASSWORD || "",
@@ -1114,8 +1038,6 @@ function hideImportOath() {
 function setupImportOath() {
     const yesBtn = document.getElementById('oath-yes');
     const noBtn = document.getElementById('oath-no');
-    const cancelBtn = document.getElementById('oath-cancel');
-    const discardBtn = document.getElementById('cancel-import-btn');
 
     if (yesBtn) {
         yesBtn.addEventListener('click', () => {
@@ -1130,129 +1052,8 @@ function setupImportOath() {
 
     if (noBtn) {
         noBtn.addEventListener('click', () => {
-            if (!stagedImport) return hideImportOath();
-            chrome.runtime.sendMessage(
-                { action: 'schedulePendingImport', settings: stagedImport },
-                async (response) => {
-                    hideImportOath();
-                    if (!response || !response.record) {
-                        showToast('Could not schedule that import.');
-                        return;
-                    }
-                    await refreshPendingState();
-                    renderPendingImport();
-                    showToast(`Import held. Keep this tab open for ${formatCountdown(REMOVAL_DELAY_MS)}.`);
-                }
-            );
-        });
-    }
-
-    if (cancelBtn) cancelBtn.addEventListener('click', hideImportOath);
-
-    if (discardBtn) {
-        discardBtn.addEventListener('click', () => {
-            chrome.runtime.sendMessage({ action: 'cancelPendingImport' }, async () => {
-                await refreshPendingState();
-                renderPendingImport();
-                showToast('Import discarded — your current settings stay.');
-            });
-        });
-    }
-}
-
-function renderPendingImport() {
-    const banner = document.getElementById('pending-import-banner');
-    const timer = document.getElementById('import-timer');
-    if (!banner || !timer) return;
-
-    if (!pendingImport) {
-        banner.classList.add('hidden');
-        return;
-    }
-
-    banner.classList.remove('hidden');
-    timer.setAttribute('data-expires-at', pendingImport.expiresAt);
-    timer.textContent = formatCountdown(pendingImport.expiresAt - Date.now());
-}
-
-// ------------------------------------------------------------------
-// LINK REMOVAL CONFIRMATION MODAL
-// ------------------------------------------------------------------
-
-function promptRemovalConfirmation(listId, stateKey, item) {
-    currentRemovalNonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
-    stagedRemoval = { listId, stateKey, item, nonce: currentRemovalNonce };
-
-    const modal = document.getElementById('removal-modal');
-    const itemNameEl = document.getElementById('removal-item-name');
-    const customMsgInput = document.getElementById('removal-custom-input');
-    const phraseBoxEl = document.getElementById('removal-target-phrase');
-    const inputEl = document.getElementById('removal-input');
-    const errorEl = document.getElementById('removal-error');
-
-    if (!modal) {
-        requestRemoval(listId, stateKey, item, true, currentRemovalNonce);
-        return;
-    }
-
-    if (itemNameEl) itemNameEl.textContent = item;
-
-    const customMsg = (state.SCAN_MESSAGE || CONFIG.SCAN_MESSAGE || 'Remember why you set this protection up.').trim();
-    if (customMsgInput) customMsgInput.value = customMsg;
-
-    const unlockPhrase = (state.UNLOCK_PHRASE || CONFIG.UNLOCK_PHRASE || 'I am choosing to break my own rule').trim();
-    if (phraseBoxEl) phraseBoxEl.textContent = unlockPhrase;
-
-    if (inputEl) inputEl.value = '';
-    if (errorEl) errorEl.classList.add('hidden');
-
-    modal.classList.remove('hidden');
-    if (inputEl) setTimeout(() => inputEl.focus(), 100);
-}
-
-function hideRemovalModal() {
-    const modal = document.getElementById('removal-modal');
-    if (modal) modal.classList.add('hidden');
-    stagedRemoval = null;
-    currentRemovalNonce = null;
-}
-
-function setupRemovalModal() {
-    const confirmBtn = document.getElementById('removal-confirm-btn');
-    const cancelBtn = document.getElementById('removal-cancel-btn');
-    const inputEl = document.getElementById('removal-input');
-    const errorEl = document.getElementById('removal-error');
-
-    const handleConfirm = () => {
-        if (!stagedRemoval) {
-            hideRemovalModal();
-            return;
-        }
-
-        const requiredPhrase = (state.UNLOCK_PHRASE || CONFIG.UNLOCK_PHRASE || 'I am choosing to break my own rule').trim();
-        const typedInput = inputEl ? inputEl.value.trim() : '';
-
-        const collapse = text => text.replace(/\s+/g, ' ').toLowerCase();
-
-        if (collapse(typedInput) === collapse(requiredPhrase)) {
-            const { listId, stateKey, item, nonce } = stagedRemoval;
-            hideRemovalModal();
-            requestRemoval(listId, stateKey, item, true, nonce);
-        } else {
-            if (errorEl) errorEl.classList.remove('hidden');
-            if (inputEl) inputEl.focus();
-        }
-    };
-
-    if (confirmBtn) confirmBtn.addEventListener('click', handleConfirm);
-    if (cancelBtn) cancelBtn.addEventListener('click', hideRemovalModal);
-
-    if (inputEl) {
-        inputEl.addEventListener('input', () => {
-            if (errorEl) errorEl.classList.add('hidden');
-        });
-        inputEl.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') handleConfirm();
+            hideImportOath();
+            showToast('Import cancelled — your current settings stay.');
         });
     }
 }

@@ -105,134 +105,10 @@ function isMasterBlocked(domain) {
 }
 
 // ------------------------------------------------------------------
-// DELAYED REMOVAL ENGINE
+// SETTINGS IMPORT
 // ------------------------------------------------------------------
-// A removal is recorded as a pending record and only applied once its alarm
-// fires. The record is voided the moment the dashboard tab that created it is
-// closed or navigated away, so unblocking costs an uninterrupted 12 minutes.
-
-const OPTIONS_URL = chrome.runtime.getURL('src/options/options.html');
-
-async function getPendingChanges() {
-  const { PENDING_CHANGES } = await chrome.storage.local.get({ PENDING_CHANGES: [] });
-  return Array.isArray(PENDING_CHANGES) ? PENDING_CHANGES : [];
-}
-
-function setPendingChanges(pending) {
-  return chrome.storage.local.set({ PENDING_CHANGES: pending });
-}
-
-// The tab counts as alive only while it exists AND is still on the dashboard.
-async function isOwnerTabAlive(tabId) {
-  try {
-    const tab = await chrome.tabs.get(tabId);
-    return !!tab && typeof tab.url === 'string' && tab.url.startsWith(OPTIONS_URL);
-  } catch {
-    return false;
-  }
-}
-
-async function schedulePendingChange(listKey, value, op, tabId) {
-  const direction = op === 'add' ? 'add' : 'remove';
-  if (!isDelayed(listKey, direction)) return null;
-  if (typeof tabId !== 'number' || typeof value !== 'string') return null;
-
-  const pending = await getPendingChanges();
-  const existing = pending.find(p => p.listKey === listKey && p.value === value);
-  if (existing) return existing;
-
-  const now = Date.now();
-  const record = {
-    id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
-    listKey,
-    value,
-    op: direction,
-    tabId,
-    scheduledAt: now,
-    expiresAt: now + delayFor(listKey, direction)
-  };
-
-  pending.push(record);
-  await setPendingChanges(pending);
-  chrome.alarms.create(PENDING_ALARM_PREFIX + record.id, { when: record.expiresAt });
-  return record;
-}
-
-async function cancelPendingChange(id) {
-  const pending = await getPendingChanges();
-  const remaining = pending.filter(p => p.id !== id);
-  if (remaining.length === pending.length) return;
-  await setPendingChanges(remaining);
-  await chrome.alarms.clear(PENDING_ALARM_PREFIX + id);
-}
-
-async function cancelPendingForTab(tabId) {
-  const pendingImport = await getPendingImport();
-  if (pendingImport && pendingImport.tabId === tabId) {
-    await clearPendingImport();
-    console.log('[BlockX] Dashboard left — voided the pending settings import.');
-  }
-
-  const pending = await getPendingChanges();
-  const voided = pending.filter(p => p.tabId === tabId);
-  if (voided.length === 0) return;
-
-  await setPendingChanges(pending.filter(p => p.tabId !== tabId));
-  await Promise.all(voided.map(p => chrome.alarms.clear(PENDING_ALARM_PREFIX + p.id)));
-  console.log(`[BlockX] Dashboard left — voided ${voided.length} pending removal(s).`);
-}
-
-async function executePendingChange(id) {
-  const pending = await getPendingChanges();
-  const record = pending.find(p => p.id === id);
-  if (!record) return;
-
-  if (!(await isOwnerTabAlive(record.tabId))) {
-    await cancelPendingChange(id);
-    return;
-  }
-
-  // Alarms can fire early; re-arm rather than letting the wait be cut short.
-  if (Date.now() < record.expiresAt) {
-    chrome.alarms.create(PENDING_ALARM_PREFIX + id, { when: record.expiresAt });
-    return;
-  }
-
-  await setPendingChanges(pending.filter(p => p.id !== id));
-  await chrome.alarms.clear(PENDING_ALARM_PREFIX + id);
-
-  const stored = await chrome.storage.local.get({ [record.listKey]: [] });
-  const list = Array.isArray(stored[record.listKey]) ? stored[record.listKey] : [];
-
-  const next = record.op === 'add'
-    ? (list.includes(record.value) ? list : [...list, record.value])
-    : list.filter(item => item !== record.value);
-
-  if (next.length !== list.length) {
-    // This write trips the storage listener below, which rebuilds the DNR rules.
-    await chrome.storage.local.set({ [record.listKey]: next });
-    const verb = record.op === 'add' ? 'added' : 'removed';
-    console.log(`[BlockX] Cooling-off elapsed — ${verb} "${record.value}" ${verb === 'added' ? 'to' : 'from'} ${record.listKey}.`);
-  }
-}
-
-// ------------------------------------------------------------------
-// DEFERRED SETTINGS IMPORT
-// ------------------------------------------------------------------
-// An imported backup can rewrite every list at once, so it gets the same
-// cooling-off treatment unless the user affirms their intention.
-
-async function getPendingImport() {
-  const { PENDING_IMPORT } = await chrome.storage.local.get({ PENDING_IMPORT: null });
-  return PENDING_IMPORT;
-}
-
-async function clearPendingImport() {
-  const record = await getPendingImport();
-  if (!record) return;
-  await chrome.storage.local.remove('PENDING_IMPORT');
-  await chrome.alarms.clear(PENDING_IMPORT_ALARM_PREFIX + record.id);
-}
+// An imported backup can rewrite every list at once, so it only lands after
+// the intention check in the dashboard — never silently.
 
 // Only the known settings keys are ever written back, so a hand-edited file
 // cannot inject anything the dashboard does not manage.
@@ -249,90 +125,8 @@ async function applyImportNow(settings) {
   const clean = sanitiseImport(settings);
   if (!clean) return false;
 
-  // The lists are replaced wholesale, so any in-flight removal is moot.
-  const pending = await getPendingChanges();
-  await Promise.all(pending.map(p => chrome.alarms.clear(PENDING_ALARM_PREFIX + p.id)));
-  await clearPendingImport();
-  await chrome.storage.local.set({ ...clean, PENDING_CHANGES: [] });
+  await chrome.storage.local.set(clean);
   return true;
-}
-
-async function schedulePendingImport(settings, tabId) {
-  const clean = sanitiseImport(settings);
-  if (!clean || typeof tabId !== 'number') return null;
-
-  await clearPendingImport();
-
-  const now = Date.now();
-  const record = {
-    id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
-    settings: clean,
-    tabId,
-    scheduledAt: now,
-    expiresAt: now + REMOVAL_DELAY_MS
-  };
-
-  await chrome.storage.local.set({ PENDING_IMPORT: record });
-  chrome.alarms.create(PENDING_IMPORT_ALARM_PREFIX + record.id, { when: record.expiresAt });
-  return record;
-}
-
-async function executePendingImport(id) {
-  const record = await getPendingImport();
-  if (!record || record.id !== id) return;
-
-  if (!(await isOwnerTabAlive(record.tabId))) {
-    await clearPendingImport();
-    return;
-  }
-
-  if (Date.now() < record.expiresAt) {
-    chrome.alarms.create(PENDING_IMPORT_ALARM_PREFIX + id, { when: record.expiresAt });
-    return;
-  }
-
-  await applyImportNow(record.settings);
-  console.log('[BlockX] Cooling-off elapsed — imported settings applied.');
-
-  // Only extension pages receive this; the dashboard reloads onto the new state.
-  chrome.runtime.sendMessage({ action: 'importApplied' }).catch(() => {});
-}
-
-// Drops records whose dashboard tab is gone and re-arms the ones that survived.
-// After a browser restart every tab id is new, so everything pending is voided.
-async function reconcilePendingState() {
-  const pendingImport = await getPendingImport();
-  if (pendingImport) {
-    if (!(await isOwnerTabAlive(pendingImport.tabId))) {
-      await clearPendingImport();
-    } else if (Date.now() >= pendingImport.expiresAt) {
-      await executePendingImport(pendingImport.id);
-    } else {
-      chrome.alarms.create(PENDING_IMPORT_ALARM_PREFIX + pendingImport.id, { when: pendingImport.expiresAt });
-    }
-  }
-
-  const pending = await getPendingChanges();
-  if (pending.length === 0) return;
-
-  const survivors = [];
-  for (const record of pending) {
-    if (await isOwnerTabAlive(record.tabId)) {
-      survivors.push(record);
-    } else {
-      await chrome.alarms.clear(PENDING_ALARM_PREFIX + record.id);
-    }
-  }
-
-  if (survivors.length !== pending.length) await setPendingChanges(survivors);
-
-  for (const record of survivors) {
-    if (Date.now() >= record.expiresAt) {
-      await executePendingChange(record.id);
-    } else {
-      chrome.alarms.create(PENDING_ALARM_PREFIX + record.id, { when: record.expiresAt });
-    }
-  }
 }
 
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -341,20 +135,6 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   } else if (alarm.name === 'blockx-settings-poll') {
     ensureSafeSearchEnabled();
     reconcileSettings('poll');
-  } else if (alarm.name.startsWith(PENDING_ALARM_PREFIX)) {
-    executePendingChange(alarm.name.slice(PENDING_ALARM_PREFIX.length));
-  } else if (alarm.name.startsWith(PENDING_IMPORT_ALARM_PREFIX)) {
-    executePendingImport(alarm.name.slice(PENDING_IMPORT_ALARM_PREFIX.length));
-  }
-});
-
-chrome.tabs.onRemoved.addListener((tabId) => {
-  cancelPendingForTab(tabId);
-});
-
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.url && !changeInfo.url.startsWith(OPTIONS_URL)) {
-    cancelPendingForTab(tabId);
   }
 });
 
@@ -527,7 +307,6 @@ async function bootstrap(reason) {
   ensureSafeSearchEnabled();
   await reconcileSettings(reason);
   await queueRuleUpdate();
-  await reconcilePendingState();
 }
 
 chrome.runtime.onInstalled.addListener(() => { bootstrap('installed'); });
@@ -597,26 +376,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'closeTab' && sender.tab) {
     chrome.tabs.remove(sender.tab.id).catch(() => {});
-    return true;
-  }
-
-  if (request.action === 'schedulePendingChange') {
-    schedulePendingChange(request.listKey, request.value, request.op, sender.tab?.id)
-      .then((record) => sendResponse({ record }));
-    return true;
-  }
-
-  if (request.action === 'cancelPendingChange') {
-    cancelPendingChange(request.id).then(() => sendResponse({ ok: true }));
-    return true;
-  }
-
-  if (request.action === 'getPendingChanges') {
-    reconcilePendingState()
-      .then(async () => sendResponse({
-        pending: await getPendingChanges(),
-        pendingImport: await getPendingImport()
-      }));
     return true;
   }
 
@@ -732,17 +491,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'applyImportNow') {
     applyImportNow(request.settings).then((ok) => sendResponse({ ok }));
-    return true;
-  }
-
-  if (request.action === 'schedulePendingImport') {
-    schedulePendingImport(request.settings, sender.tab?.id)
-      .then((record) => sendResponse({ record }));
-    return true;
-  }
-
-  if (request.action === 'cancelPendingImport') {
-    clearPendingImport().then(() => sendResponse({ ok: true }));
     return true;
   }
 

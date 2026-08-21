@@ -495,7 +495,7 @@
     heading.textContent = 'Explicit content detected';
 
     const message = document.createElement('p');
-    message.textContent = (CONFIG.SCAN_MESSAGE || '').trim()
+    message.textContent = (CONFIG.WEAKENING_MESSAGE || '').trim()
       || 'This page looks explicit. Do you still want to open it?';
 
     card.appendChild(mark);

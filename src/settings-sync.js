@@ -177,12 +177,12 @@ function admissibleSettings(local, candidate) {
   console.warn('[BlockX] Settings file was hand-edited to loosen protection. Ignoring those parts.');
   const merged = { ...candidate.settings };
 
-  for (const key of DELAYED_REMOVAL_LISTS) {
+  for (const key of WEAKENING_REMOVAL_LISTS) {
     const before = Array.isArray(local.settings[key]) ? local.settings[key] : [];
     const after = Array.isArray(merged[key]) ? merged[key] : [];
     merged[key] = [...new Set([...before, ...after])];
   }
-  for (const key of ['CUSTOM_ALLOWED_DOMAINS', ...DELAYED_ADDITION_LISTS]) {
+  for (const key of WEAKENING_ADDITION_LISTS) {
     const before = new Set(Array.isArray(local.settings[key]) ? local.settings[key] : []);
     merged[key] = (Array.isArray(merged[key]) ? merged[key] : []).filter(item => before.has(item));
   }

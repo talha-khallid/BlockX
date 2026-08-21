@@ -45,6 +45,10 @@
                     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                     <span>Scanning</span>
                 </a>
+                <a href="#" class="nav-link" data-section="friction">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    <span>Friction</span>
+                </a>
                 <a href="#" class="nav-link" data-section="security">
                     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
                     <span>Security</span>
@@ -254,14 +258,6 @@
                                 </div>
                             </div>
                         </div>
-
-                        <div id="pending-import-banner" class="pending-import-banner hidden">
-                            <div class="pending-import-info">
-                                <span class="title">Imported settings are on hold</span>
-                                <span class="desc">They apply in <span class="pending-timer" id="import-timer" data-expires-at="0">12:00</span> — keep this tab open, or they are discarded.</span>
-                            </div>
-                            <button id="cancel-import-btn" class="tag-keep" type="button">Discard import</button>
-                        </div>
                     </div>
                 </div>
 
@@ -380,19 +376,6 @@
                 <div id="section-scanning" class="settings-section">
                     <div class="settings-group">
                         <div class="group-header">
-                            <h3>Warning Message</h3>
-                            <p>Shown on any page where explicit wording is detected. Write something that will actually stop you.</p>
-                        </div>
-                        <div class="interactive-list-manager">
-                            <textarea id="scan-message" class="scan-message" rows="3" maxlength="400" placeholder="Write the message you need to read in that moment..."></textarea>
-                            <div class="input-row" style="margin-top: 12px;">
-                                <button id="save-scan-message-btn" class="btn btn-secondary">Save Message</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="settings-group">
-                        <div class="group-header">
                             <h3>Sensitivity</h3>
                             <p>How many different flagged words a page needs before the warning appears.</p>
                         </div>
@@ -439,7 +422,7 @@
                     <div class="settings-group">
                         <div class="group-header">
                             <h3>Scan Exclusions</h3>
-                            <p>Never scanned. Adding one waits 4 minutes; removing one is instant.
+                            <p>Never scanned. Adding one asks for your confirmation first; removing one is instant.
                                A site you have already blocked cannot be added.</p>
                         </div>
                         <div class="interactive-list-manager">
@@ -460,6 +443,25 @@
                             <div id="scan-excluded-list" class="tag-cloud">
                                 <!-- Populated by JS -->
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Friction Section -->
+                <div id="section-friction" class="settings-section">
+                    <div class="settings-group">
+                        <div class="group-header">
+                            <h3>Warning Message</h3>
+                            <p>The one message shown whenever you try to loosen protection —
+                               removing a restricted entry, adding a site to the whitelist,
+                               or exempting one from scanning. Write something that will actually stop you.</p>
+                        </div>
+                        <div class="interactive-list-manager">
+                            <textarea id="weakening-message" class="scan-message" rows="3" maxlength="400" placeholder="Write the message you need to read in that moment..."></textarea>
+                            <div class="input-row" style="margin-top: 12px;">
+                                <button id="save-weakening-message-btn" class="btn btn-secondary">Save Message</button>
+                            </div>
+                            <p class="help-text">Shown as a confirmation before any change that loosens your protection. The change applies the moment you say yes.</p>
                         </div>
                     </div>
                 </div>
@@ -532,45 +534,28 @@
 
                 <div class="oath-actions">
                     <button id="oath-yes" class="btn btn-primary" type="button">Yes, I swear — apply now</button>
-                    <button id="oath-no" class="btn btn-secondary" type="button">No — apply after 12 minutes</button>
+                    <button id="oath-no" class="btn btn-secondary" type="button">No — don't import</button>
                 </div>
-                <button id="oath-cancel" class="oath-cancel" type="button">Cancel import</button>
             </div>
         </div>
 
-        <!-- Link Removal Confirmation Modal -->
-        <div id="removal-modal" class="oath-overlay hidden">
+        <!-- Loosening Protection Warning Modal -->
+        <div id="weakening-modal" class="oath-overlay hidden">
             <div class="oath-card removal-card">
-                <h2>Confirm Link Removal</h2>
-                
+                <h2>Read this first</h2>
+
                 <div class="removal-custom-box">
-                    <span class="removal-custom-label">Your Custom Warning / Intention Message</span>
-                    <textarea id="removal-custom-input" class="scan-message" rows="2" readonly style="margin-top: 6px; font-size: 13px; font-style: italic; cursor: default; resize: none;"></textarea>
+                    <span class="removal-custom-label">Your Warning Message</span>
+                    <div id="weakening-warning-text" class="removal-phrase-box" style="margin-top: 6px; font-family: inherit; font-style: italic;"></div>
                 </div>
 
                 <p class="oath-question" style="margin-top: 14px;">
-                    Are you sure you want to remove <strong id="removal-item-name"></strong>?
+                    <span id="weakening-action-desc"></span>
                 </p>
-
-                <div class="removal-custom-box" style="border-left-color: var(--pending); margin-top: 10px;">
-                    <span class="removal-custom-label">Unlock Phrase to Retype</span>
-                    <div id="removal-target-phrase" class="removal-phrase-box" style="margin-top: 6px;"></div>
-                </div>
-
-                <p class="oath-note" style="margin-top: 12px; margin-bottom: 8px;">
-                    Type the phrase above into the lower input box to confirm you are not doing this for a wrong purpose:
-                </p>
-
-                <div class="input-row" style="margin-top: 8px; margin-bottom: 8px;">
-                    <input type="text" id="removal-input" placeholder="Type unlock phrase here to confirm..." autocomplete="off">
-                </div>
-                <div id="removal-error" class="error-msg hidden" style="margin-top: 0; margin-bottom: 14px;">
-                    Phrase does not match. Please retype carefully.
-                </div>
 
                 <div class="oath-actions">
-                    <button id="removal-confirm-btn" class="btn btn-primary" type="button">Confirm &amp; Remove</button>
-                    <button id="removal-cancel-btn" class="btn btn-secondary" type="button">Cancel</button>
+                    <button id="weakening-proceed-btn" class="btn btn-primary" type="button">Yes, Go Ahead</button>
+                    <button id="weakening-goback-btn" class="btn btn-secondary" type="button">No, Don't Change</button>
                 </div>
             </div>
         </div>

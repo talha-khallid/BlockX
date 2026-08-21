@@ -33,8 +33,9 @@ let CONFIG = {
   // Domains exempt from on-page content scanning
   SCAN_EXCLUDED: [],
 
-  // Message shown by the on-page content warning
-  SCAN_MESSAGE: 'This page looks explicit. Remember why you set this up. Do you still want to open it?',
+  // The one warning message. Shown by the on-page content warning and by
+  // every confirmation that loosens protection in the dashboard.
+  WEAKENING_MESSAGE: 'Stop. This weakens the protection you built. Remember why you set this up — is this really what you want right now?',
 
   // How many DISTINCT flagged terms a page needs before the warning appears
   SCAN_SENSITIVITY: 2,
@@ -52,48 +53,25 @@ let CONFIG = {
 };
 
 // ------------------------------------------------------------------
-// DELAYED REMOVAL (COOLING-OFF PERIOD)
+// WEAKENING CHANGES
 // ------------------------------------------------------------------
-// Taking an entry off a blocklist is never immediate. It is scheduled, and it
-// only lands if the dashboard tab that asked for it stays open the whole time.
-const REMOVAL_DELAY_MS = 12 * 60 * 1000;
+// A change that loosens protection is never applied silently: the dashboard
+// shows the user's warning message and asks for an explicit yes or no first.
+// There is no timer anywhere in that path.
 
-// Exempting something from scanning gives up less than dropping it from a
-// blocklist, so it is a shorter wait — long enough to be a decision, not so
-// long that narrowing a false positive is a chore.
-const SCAN_EXCLUSION_DELAY_MS = 4 * 60 * 1000;
-
-// Taking an entry OFF one of these lists weakens protection, so it waits.
-const DELAYED_REMOVAL_LISTS = [
+// Taking an entry OFF one of these lists weakens protection.
+const WEAKENING_REMOVAL_LISTS = [
   'CUSTOM_DOMAINS',
   'CUSTOM_KEYWORDS',
   'CUSTOM_PAGES',
   'CUSTOM_EXACT_PAGES'
 ];
 
-// Putting an entry ON one of these lists weakens protection, so it waits.
-// The inverse direction on both kinds of list stays instant.
-const DELAYED_ADDITION_LISTS = [
+// Putting an entry ON one of these lists weakens protection.
+const WEAKENING_ADDITION_LISTS = [
+  'CUSTOM_ALLOWED_DOMAINS',
   'CUSTOM_SCAN_EXCLUDED'
 ];
-
-function isDelayed(listKey, op) {
-  return op === 'add'
-    ? DELAYED_ADDITION_LISTS.includes(listKey)
-    : DELAYED_REMOVAL_LISTS.includes(listKey);
-}
-
-/**
- * How long a given change has to wait. Every caller asks rather than assuming,
- * so the wait shown in the dashboard is always the wait actually served.
- */
-function delayFor(listKey, op) {
-  if (op === 'add' && listKey === 'CUSTOM_SCAN_EXCLUDED') return SCAN_EXCLUSION_DELAY_MS;
-  return REMOVAL_DELAY_MS;
-}
-
-const PENDING_ALARM_PREFIX = 'blockx-pending-change:';
-const PENDING_IMPORT_ALARM_PREFIX = 'blockx-pending-import:';
 
 // Settings keys an imported backup is allowed to write.
 const IMPORTABLE_KEYS = [
@@ -104,9 +82,9 @@ const IMPORTABLE_KEYS = [
   'CUSTOM_EXACT_PAGES',
   'CUSTOM_ALLOWED_DOMAINS',
   'CUSTOM_SCAN_EXCLUDED',
-  'SCAN_MESSAGE',
   'SCAN_SENSITIVITY',
   'UNLOCK_PHRASE',
+  'WEAKENING_MESSAGE',
   'ACTIVE_GAME_INDEX',
   'SECURITY_ENABLED',
   'PASSWORD',
@@ -128,7 +106,7 @@ const NATIVE_HOST_NAME = 'com.blockx.settings';
 const SETTINGS_FILE_VERSION = 1;
 
 // Keys that make up a shared settings snapshot. Deliberately the same set an
-// imported backup may write — pending state is per-tab and never travels.
+// imported backup may write.
 const SETTINGS_KEYS = IMPORTABLE_KEYS;
 
 // Mixed into the file checksum. Not a secret and not meant to stop a
@@ -170,13 +148,13 @@ function pickSettings(source) {
 function weakensProtection(current, incoming) {
   const list = (source, key) => (Array.isArray(source?.[key]) ? source[key] : []);
 
-  for (const key of DELAYED_REMOVAL_LISTS) {
+  for (const key of WEAKENING_REMOVAL_LISTS) {
     const before = list(current, key);
     const after = new Set(list(incoming, key));
     if (incoming[key] !== undefined && before.some(item => !after.has(item))) return true;
   }
 
-  for (const key of ['CUSTOM_ALLOWED_DOMAINS', ...DELAYED_ADDITION_LISTS]) {
+  for (const key of WEAKENING_ADDITION_LISTS) {
     const before = new Set(list(current, key));
     if (list(incoming, key).some(item => !before.has(item))) return true;
   }
@@ -219,9 +197,10 @@ async function loadConfig() {
       CUSTOM_EXACT_PAGES: [],
       CUSTOM_ALLOWED_DOMAINS: [], // FIXED: Changed from ALLOWED_DOMAINS to CUSTOM_ALLOWED_DOMAINS
       CUSTOM_SCAN_EXCLUDED: [],
-      SCAN_MESSAGE: CONFIG.SCAN_MESSAGE,
+      SCAN_MESSAGE: '',
       SCAN_SENSITIVITY: 2,
       UNLOCK_PHRASE: CONFIG.UNLOCK_PHRASE,
+      WEAKENING_MESSAGE: '',
       TEMP_GRANTS: [],
       THEME: 'system',
       ACTIVE_GAME_INDEX: -1
@@ -234,7 +213,8 @@ async function loadConfig() {
       CONFIG.EXACT_PAGE_URLS = items.CUSTOM_EXACT_PAGES;
       CONFIG.ALLOWED_DOMAINS = items.CUSTOM_ALLOWED_DOMAINS;
       CONFIG.SCAN_EXCLUDED = items.CUSTOM_SCAN_EXCLUDED;
-      CONFIG.SCAN_MESSAGE = items.SCAN_MESSAGE;
+      // The old per-scan message was folded into the one warning message.
+      CONFIG.WEAKENING_MESSAGE = items.WEAKENING_MESSAGE || items.SCAN_MESSAGE || CONFIG.WEAKENING_MESSAGE;
       CONFIG.SCAN_SENSITIVITY = items.SCAN_SENSITIVITY;
       CONFIG.UNLOCK_PHRASE = items.UNLOCK_PHRASE;
       CONFIG.TEMP_GRANTS = items.TEMP_GRANTS;

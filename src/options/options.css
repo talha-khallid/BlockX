@@ -16,10 +16,6 @@
     --border-base: #e5e7eb;
     --border-active: var(--accent);
     
-    --pending: #f59e0b;
-    --pending-soft: rgba(245, 158, 11, 0.08);
-    --pending-text: #b45309;
-
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
     
@@ -53,8 +49,6 @@ body[data-user-theme="dark"] {
     --border-light: #27272a;
     --border-base: #3f3f46;
     --accent-soft: rgba(25, 0, 255, 0.15);
-    --pending-soft: rgba(245, 158, 11, 0.12);
-    --pending-text: #fbbf24;
 }
 
 /* System Theme Fallback */
@@ -69,8 +63,6 @@ body[data-user-theme="dark"] {
         --border-light: #27272a;
         --border-base: #3f3f46;
         --accent-soft: rgba(25, 0, 255, 0.15);
-        --pending-soft: rgba(245, 158, 11, 0.12);
-        --pending-text: #fbbf24;
     }
 }
 
@@ -471,24 +463,6 @@ input:checked + .hub-item-box .icon { color: var(--accent-dark); }
 }
 .sync-revision { font-size: 12px; color: var(--text-tertiary); }
 
-/* Waiting to be added — not enforced yet, so no strike-through */
-.tag-item.pending-add .tag-label { text-decoration: none; font-style: italic; }
-
-/* Entries waiting out their cooling-off period */
-.tag-item.pending { border-color: var(--pending); background: var(--pending-soft); }
-.tag-item.pending:hover { border-color: var(--pending); background: var(--pending-soft); }
-.tag-item.pending .tag-label { color: var(--text-tertiary); text-decoration: line-through; }
-
-.pending-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.pending-label { font-size: 12px; color: var(--text-secondary); }
-.pending-timer {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--pending-text);
-    font-variant-numeric: tabular-nums;
-    min-width: 42px;
-}
-
 .tag-keep {
     font-family: inherit;
     font-size: 12px;
@@ -557,35 +531,6 @@ input:checked + .slider:before { transform: translateX(20px); }
 .oath-actions { display: flex; flex-direction: column; gap: 10px; }
 .oath-actions .btn { justify-content: center; width: 100%; }
 .oath-actions .btn:hover { transform: none; }
-.oath-cancel {
-    margin-top: 18px;
-    background: none;
-    border: none;
-    font-family: inherit;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-tertiary);
-    cursor: pointer;
-    text-decoration: underline;
-}
-.oath-cancel:hover { color: var(--text-secondary); }
-
-/* Held import banner */
-.pending-import-banner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
-    margin-top: 16px;
-    padding: 16px 20px;
-    border: 1px solid var(--pending);
-    background: var(--pending-soft);
-    border-radius: var(--radius-md);
-}
-.pending-import-info .title { display: block; font-weight: 700; font-size: 14px; margin-bottom: 4px; }
-.pending-import-info .desc { display: block; font-size: 13px; color: var(--text-secondary); }
-.pending-import-banner .pending-timer { font-size: 13px; }
 
 .toast-notification {
     position: fixed;
