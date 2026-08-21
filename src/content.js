@@ -7,10 +7,13 @@
   // Loading state: nothing is painted at all.
   const BARRIER_OPAQUE = 'html { visibility: hidden !important; opacity: 0 !important; background: #ffffff !important; }';
 
-  // Prompt state: root-level 80px blur & freeze on html and body so content
-  // remains completely unreadable even if overlay elements are tampered with.
+  // Prompt state: an 80px blur & freeze on body — where every bit of page
+  // content lives — so it stays completely unreadable even if overlay
+  // elements are tampered with. The warning host sits on <html>, outside
+  // body, which is what keeps it sharp while the page behind it is not.
   const BARRIER_FROZEN = `
-    html, body {
+    html { overflow: hidden !important; }
+    body {
       filter: blur(80px) saturate(0.2) !important;
       -webkit-filter: blur(80px) saturate(0.2) !important;
       overflow: hidden !important;
@@ -346,49 +349,8 @@
     }
     button:focus-visible { outline: 2px solid #1900FF; outline-offset: 2px; }
 
-    .gate { margin: 0 0 22px; text-align: left; }
-    .gate-label {
-      display: block;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: #71717a;
-      margin-bottom: 8px;
-    }
-    .gate-phrase {
-      font-size: 13.5px;
-      line-height: 1.55;
-      color: #f9fafb;
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 10px;
-      padding: 12px 14px;
-      margin: 0 0 8px;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      user-select: none;
-    }
-    .gate-input {
-      width: 100%;
-      box-sizing: border-box;
-      font-family: inherit;
-      font-size: 13.5px;
-      line-height: 1.5;
-      padding: 11px 13px;
-      border-radius: 10px;
-      border: 1px solid #3f3f46;
-      background: transparent;
-      color: #f9fafb;
-      resize: none;
-      display: block;
-    }
-    .gate-input::placeholder { color: #52525b; }
-    .gate-input:focus { outline: none; border-color: #1900FF; }
-
     .leave { background: #f9fafb; color: #111827; margin-bottom: 10px; }
     .leave:hover { background: #ffffff; }
-    .show:disabled { opacity: 0.35; cursor: not-allowed; }
-    .show:disabled:hover { color: #71717a; border-color: #3f3f46; }
 
     .show { background: transparent; color: #71717a; border-color: #3f3f46; }
     .show:hover { color: #f9fafb; border-color: #71717a; }
@@ -409,10 +371,6 @@
     :host([data-theme="light"]) p { color: #4b5563; }
     :host([data-theme="light"]) .leave { background: #111827; color: #ffffff; }
     :host([data-theme="light"]) .leave:hover { background: #000000; }
-    :host([data-theme="light"]) .gate-label { color: #6b7280; }
-    :host([data-theme="light"]) .gate-phrase { background: #f9fafb; color: #111827; }
-    :host([data-theme="light"]) .gate-input { border-color: #e5e7eb; color: #111827; }
-    :host([data-theme="light"]) .gate-input::placeholder { color: #9ca3af; }
     :host([data-theme="light"]) .show { color: #6b7280; border-color: #e5e7eb; }
     :host([data-theme="light"]) .show:hover { color: #111827; border-color: #9ca3af; }
 
@@ -502,38 +460,6 @@
     card.appendChild(heading);
     card.appendChild(message);
 
-    // Seeing the page anyway costs the same phrase the toolbar unlock asks for.
-    // The warning message above is untouched; this sits under it.
-    const phrase = (CONFIG.UNLOCK_PHRASE || '').trim();
-    let gateInput = null;
-
-    if (phrase) {
-      const gate = document.createElement('div');
-      gate.className = 'gate';
-
-      const gateLabel = document.createElement('span');
-      gateLabel.className = 'gate-label';
-      gateLabel.textContent = 'Type this to continue';
-
-      const gatePhrase = document.createElement('p');
-      gatePhrase.className = 'gate-phrase';
-      gatePhrase.textContent = phrase;
-
-      gateInput = document.createElement('textarea');
-      gateInput.className = 'gate-input';
-      gateInput.rows = 2;
-      gateInput.spellcheck = false;
-      gateInput.setAttribute('autocomplete', 'off');
-      gateInput.setAttribute('autocapitalize', 'off');
-      gateInput.setAttribute('autocorrect', 'off');
-      gateInput.placeholder = 'Type it exactly';
-
-      gate.appendChild(gateLabel);
-      gate.appendChild(gatePhrase);
-      gate.appendChild(gateInput);
-      card.appendChild(gate);
-    }
-
     const leaveBtn = document.createElement('button');
     leaveBtn.className = 'leave';
     leaveBtn.type = 'button';
@@ -547,12 +473,11 @@
     showBtn.type = 'button';
     showBtn.textContent = 'Yes, show it';
 
-    // Plenty of sites bind bare letters as shortcuts and guard them with a
-    // check on the event target. Our box sits in a shadow root, so from the
-    // page's side the target is retargeted to the host div — not a text field
-    // — and the guard passes. The page then swallows the letter, which is why
-    // keys like b and n went missing while typing. Keep our own keystrokes to
-    // ourselves: capture on window runs before any page listener.
+    // Plenty of sites bind bare letters as shortcuts. Our box sits in a
+    // shadow root, so from the page's side events are retargeted to the host
+    // div and a site shortcut could fire while the user is choosing here.
+    // Keep our own events to ourselves: capture on window runs before any
+    // page listener.
     const keepKeys = (event) => {
       if (event.composedPath().includes(host)) event.stopPropagation();
     };
@@ -585,10 +510,22 @@
         host.style.setProperty('pointer-events', 'auto', 'important');
       }
 
-      // 3. Ensure security barrier style tag is present and enforcing root blur
+      // 3. Ensure security barrier style tag is present and enforcing blur
       if (!securityBarrier.parentNode || !document.documentElement.contains(securityBarrier) || securityBarrier.textContent !== BARRIER_FROZEN) {
         console.warn('[BlockX] Security barrier tampered with via DevTools — re-attaching.');
         raiseBarrier(BARRIER_FROZEN);
+      }
+
+      // 4. The blur lives on <body>, so dragging a node onto <html> in the
+      //    Elements panel would put it outside the blur. Anything that does
+      //    not belong directly on <html> is put back inside <body>.
+      const HEAD_LEVEL = { STYLE: 1, LINK: 1, META: 1, SCRIPT: 1, TITLE: 1 };
+      for (const node of [...document.documentElement.children]) {
+        if (node === document.head || node === document.body) continue;
+        if (node === securityBarrier || node === host) continue;
+        if (HEAD_LEVEL[node.nodeName]) continue;
+        console.warn('[BlockX] Content moved outside <body> via DevTools — moving back.');
+        if (document.body) document.body.appendChild(node);
       }
     }
 
@@ -603,35 +540,8 @@
       dropBarrier();
     };
 
-    if (gateInput) {
-      // Enabling the button is only an affordance. The decision below is made
-      // by the service worker, so clearing this attribute in an inspector
-      // reveals nothing.
-      const looksRight = () =>
-        gateInput.value.trim().replace(/\s+/g, ' ') === phrase.trim().replace(/\s+/g, ' ');
-
-      showBtn.disabled = true;
-      gateInput.addEventListener('input', () => { showBtn.disabled = !looksRight(); });
-
-      showBtn.addEventListener('click', async () => {
-        showBtn.disabled = true;
-        let allowed = false;
-        try {
-          const reply = await chrome.runtime.sendMessage({
-            action: 'verifyUnlockPhrase',
-            typed: gateInput.value
-          });
-          allowed = !!(reply && reply.ok);
-        } catch {
-          allowed = false;   // unreachable worker means stay shut, not open
-        }
-        if (allowed) reveal();
-        else showBtn.disabled = !looksRight();
-      });
-    } else {
-      // No phrase configured, so the warning is a plain confirmation.
-      showBtn.addEventListener('click', reveal);
-    }
+    // The warning message above is the whole gate: a plain yes or no.
+    showBtn.addEventListener('click', reveal);
 
     card.appendChild(leaveBtn);
     card.appendChild(showBtn);

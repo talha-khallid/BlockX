@@ -424,14 +424,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action === 'verifyUnlockPhrase') {
-    (async () => {
-      const config = await loadConfig();
-      sendResponse({ ok: unlockPhraseMatches(config.UNLOCK_PHRASE, request.typed) });
-    })();
-    return true;
-  }
-
   if (request.action === 'grantTempPass') {
     (async () => {
       const config = await loadConfig();
