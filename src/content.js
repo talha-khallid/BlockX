@@ -33,7 +33,7 @@
 
   function raiseBarrier(css) {
     securityBarrier.textContent = css;
-    if (!securityBarrier.parentNode && document.documentElement) {
+    if (document.documentElement && !document.documentElement.contains(securityBarrier)) {
       document.documentElement.appendChild(securityBarrier);
     }
   }
@@ -111,7 +111,7 @@
   
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local') {
-      loadConfig().then(() => verifyPageSafety());
+      loadConfig().then(() => prepareFilter()).then(() => verifyPageSafety());
     }
   });
 
@@ -137,6 +137,7 @@
         const allKeywords = CONFIG.KEYWORDS.concat(badwords);
         filterRegex = createOptimizedFilter(allKeywords);
         scanRegex = createBoundedFilter(allKeywords);
+        pageRegex = createBoundedFilter(CONFIG.PAGE_KEYWORDS || []);
         resolve();
       });
     });
@@ -172,6 +173,7 @@
   // an article that says one word twenty times from tripping the warning.
 
   let scanRegex = null;
+  let pageRegex = null;
   let scanPrompted = false;
   let scanAcknowledged = false;
   let scanThrottleId = null;
@@ -179,11 +181,11 @@
 
   const SKIP_TAGS = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEMPLATE: 1, TEXTAREA: 1, CODE: 1, PRE: 1 };
 
-  function countFlaggedTerms(text, found, threshold) {
-    if (!text) return false;
-    scanRegex.lastIndex = 0;
+  function countFlaggedTerms(text, regex, found, threshold) {
+    if (!text || !regex) return false;
+    regex.lastIndex = 0;
     let match;
-    while ((match = scanRegex.exec(text)) !== null) {
+    while ((match = regex.exec(text)) !== null) {
       found.add(match[0].toLowerCase());
       if (found.size >= threshold) return true;
     }
@@ -191,19 +193,29 @@
   }
 
   function scanPage() {
-    if (!scanRegex || !document.body) return null;
+    if ((!scanRegex && !pageRegex) || !document.body) return null;
 
     const threshold = Math.max(1, parseInt(CONFIG.SCAN_SENSITIVITY, 10) || 2);
     const found = new Set();
+    const pageFound = new Set();
+
+    // Page-only keywords are the user's own tripwires: a single hit is
+    // enough, and they are matched against page content only — never the
+    // URL, so typing the term into a search box cannot trip them.
+    const pageHit = (text) => countFlaggedTerms(text, pageRegex, pageFound, 1);
+    const mainHit = (text) => countFlaggedTerms(text, scanRegex, found, threshold);
 
     // Metadata first — porn pages give themselves away here and it is cheap.
     // Scoped to <head> on purpose: querying the whole document would walk the
     // entire body before the text pass even starts.
-    if (countFlaggedTerms(document.title, found, threshold)) return found;
-    if (countFlaggedTerms(extractSearchQuery(window.location.href), found, threshold)) return found;
+    if (pageHit(document.title)) return pageFound;
+    if (mainHit(document.title)) return found;
+    if (mainHit(extractSearchQuery(window.location.href))) return found;
     if (document.head) {
       for (const meta of document.head.querySelectorAll('meta[name="description"], meta[name="keywords"], meta[property^="og:"]')) {
-        if (countFlaggedTerms(meta.getAttribute('content'), found, threshold)) return found;
+        const content = meta.getAttribute('content');
+        if (pageHit(content)) return pageFound;
+        if (mainHit(content)) return found;
       }
     }
 
@@ -220,7 +232,8 @@
     let node;
     while ((node = walker.nextNode()) !== null) {
       if (++visited > SCAN_NODE_LIMIT) break;
-      if (countFlaggedTerms(node.nodeValue, found, threshold)) return found;
+      if (pageHit(node.nodeValue)) return pageFound;
+      if (mainHit(node.nodeValue)) return found;
     }
 
     return found.size >= threshold ? found : null;

@@ -330,6 +330,26 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="settings-group">
+                        <div class="group-header">
+                            <h3>Page-Only Keywords</h3>
+                            <p>Checked inside the page text only — never against the URL. A single match blurs the page and shows the warning popup.</p>
+                        </div>
+
+                        <div class="interactive-list-manager">
+                            <div class="input-row">
+                                <input type="text" id="page-keyword-input" placeholder="Add page-only keyword (e.g. explicit term)">
+                                <button id="add-page-keyword-btn" class="btn btn-secondary">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                    Add
+                                </button>
+                            </div>
+                            <div id="page-keyword-list" class="tag-cloud">
+                                <!-- Populated by JS -->
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Pages Section -->

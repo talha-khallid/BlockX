@@ -12,6 +12,10 @@ let CONFIG = {
   // Custom Keywords (Overridden by badwords.json if loaded)
   KEYWORDS: [],
 
+  // Page-only keywords: matched against page content only, never the URL.
+  // A single hit shows the warning popup instead of blocking outright.
+  PAGE_KEYWORDS: [],
+
   // Custom Domains (Overridden by domains.json if loaded)
   DOMAINS: [],
 
@@ -63,6 +67,7 @@ let CONFIG = {
 const WEAKENING_REMOVAL_LISTS = [
   'CUSTOM_DOMAINS',
   'CUSTOM_KEYWORDS',
+  'CUSTOM_PAGE_KEYWORDS',
   'CUSTOM_PAGES',
   'CUSTOM_EXACT_PAGES'
 ];
@@ -78,6 +83,7 @@ const IMPORTABLE_KEYS = [
   'BLOCK_METHOD',
   'CUSTOM_DOMAINS',
   'CUSTOM_KEYWORDS',
+  'CUSTOM_PAGE_KEYWORDS',
   'CUSTOM_PAGES',
   'CUSTOM_EXACT_PAGES',
   'CUSTOM_ALLOWED_DOMAINS',
@@ -186,6 +192,7 @@ async function loadConfig() {
       BLOCK_METHOD: 'blocked_page',
       CUSTOM_REDIRECT_URL: '',
       CUSTOM_KEYWORDS: [],
+      CUSTOM_PAGE_KEYWORDS: [],
       CUSTOM_DOMAINS: [],
       CUSTOM_PAGES: [
         'reddit.com/r/nsfw',
@@ -208,6 +215,7 @@ async function loadConfig() {
       CONFIG.BLOCK_METHOD = items.BLOCK_METHOD;
       CONFIG.CUSTOM_REDIRECT_URL = items.CUSTOM_REDIRECT_URL;
       CONFIG.KEYWORDS = items.CUSTOM_KEYWORDS;
+      CONFIG.PAGE_KEYWORDS = items.CUSTOM_PAGE_KEYWORDS;
       CONFIG.DOMAINS = items.CUSTOM_DOMAINS;
       CONFIG.PAGE_URLS = items.CUSTOM_PAGES;
       CONFIG.EXACT_PAGE_URLS = items.CUSTOM_EXACT_PAGES;
