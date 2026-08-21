@@ -80,13 +80,26 @@
     tabUnlocked = !!(reply && reply.unlocked);
   } catch { /* service worker asleep or reloading */ }
 
-  function isWhitelisted() {
+  function isSearchPage() {
+    const at = window.location;
+    if (extractSearchQuery(at.href)) return true;
+    const host = at.hostname.toLowerCase();
+    if (host.includes('google.') || host.includes('bing.com') || host.includes('duckduckgo.com') || host.includes('yahoo.com') || host.includes('yandex.')) {
+      if (at.pathname.includes('/search') || at.pathname.includes('/images') || at.pathname.includes('/videos') || at.pathname.includes('/imgres')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function isWhitelisted(ignoreSearch = false) {
     if (!CONFIG) return false;
     if (tabUnlocked) return true;
+    if (!ignoreSearch && isSearchPage()) return false;
     return matchesAnyHostEntry(window.location.hostname, window.location.port, CONFIG.ALLOWED_DOMAINS);
   }
 
-  // If the site is whitelisted, drop the barrier and shut down completely.
+  // If the site is whitelisted (and not a search result page), drop the barrier and shut down completely.
   if (isWhitelisted()) {
     console.log('🛡️ [BlockX] Site is whitelisted. Removing barrier.');
     dropBarrier();
@@ -219,6 +232,7 @@
       }
     }
 
+    // 1. Text pass — walks visible body text (titles, descriptions, sidebars, knowledge panels)
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
         if (!node.nodeValue || node.nodeValue.length < SCAN_MIN_TEXT_LENGTH) return NodeFilter.FILTER_REJECT;
@@ -234,6 +248,46 @@
       if (++visited > SCAN_NODE_LIMIT) break;
       if (pageHit(node.nodeValue)) return pageFound;
       if (mainHit(node.nodeValue)) return found;
+    }
+
+    // 2. Element attributes pass — checks image alt text, card/thumbnail aria-labels,
+    // and video descriptions across search results, Google Images, Google Videos, and side panels.
+    const elementsWithAttrs = document.body.querySelectorAll('img[alt], img[title], [aria-label], [title], [data-title], [data-alt]');
+    let attrVisited = 0;
+    const ATTR_LIMIT = 3000;
+    for (const el of elementsWithAttrs) {
+      if (++attrVisited > ATTR_LIMIT) break;
+      if (el.tagName === 'IMG') {
+        if (el.alt) {
+          if (pageHit(el.alt)) return pageFound;
+          if (mainHit(el.alt)) return found;
+        }
+        const imgTitle = el.getAttribute('title');
+        if (imgTitle) {
+          if (pageHit(imgTitle)) return pageFound;
+          if (mainHit(imgTitle)) return found;
+        }
+      }
+      const aria = el.getAttribute('aria-label');
+      if (aria) {
+        if (pageHit(aria)) return pageFound;
+        if (mainHit(aria)) return found;
+      }
+      const title = el.getAttribute('title');
+      if (title) {
+        if (pageHit(title)) return pageFound;
+        if (mainHit(title)) return found;
+      }
+      const dataTitle = el.getAttribute('data-title');
+      if (dataTitle) {
+        if (pageHit(dataTitle)) return pageFound;
+        if (mainHit(dataTitle)) return found;
+      }
+      const dataAlt = el.getAttribute('data-alt');
+      if (dataAlt) {
+        if (pageHit(dataAlt)) return pageFound;
+        if (mainHit(dataAlt)) return found;
+      }
     }
 
     return found.size >= threshold ? found : null;

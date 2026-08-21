@@ -493,8 +493,8 @@ function isGrantedTab(hostname, grants, tabId) {
 // searches put the terms anywhere, url-encode them, and mix them with other
 // words, so the query is pulled out and checked on its own.
 const SEARCH_QUERY_PARAMS = {
-  'google.': ['q'],
-  'bing.com': ['q'],
+  'google.': ['q', 'as_q', 'oq', 'query'],
+  'bing.com': ['q', 'pq'],
   'duckduckgo.com': ['q'],
   'search.yahoo.': ['p'],
   'yandex.': ['text'],
