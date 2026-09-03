@@ -42,6 +42,180 @@
     if (securityBarrier.parentNode) securityBarrier.parentNode.removeChild(securityBarrier);
   }
 
+  // ------------------------------------------------------------------
+  // ⚡ REAL-TIME INSTANT INPUT & KEYSTROKE SCANNER (MILLISECOND 0)
+  // ------------------------------------------------------------------
+  const CORE_FLAGGED_WORDS = [
+    'porn', 'porno', 'pornography', 'pornhub',
+    'sex', 'sexy', 'sexual', 'sexo', 'sexcam', 'sexdoll',
+    'nude', 'nudes', 'nudity', 'naked', 'barenaked',
+    'nsfw', 'xxx', 'xnxx', 'hentai', 'milf', 'lewd', 'erotic', 'erotica',
+    'boobs', 'boob', 'tits', 'titties', 'titty', 'breasts',
+    'cock', 'cocks', 'dick', 'pussy', 'vagina', 'penis', 'clit', 'clitoris',
+    'ass', 'assmunch', 'butt', 'butthole', 'buttcheeks',
+    'blowjob', 'handjob', 'footjob', 'cum', 'cumming', 'cumshot',
+    'fuck', 'fucking', 'fuckin', 'masturbat', 'masturbation',
+    'dildo', 'vibrator', 'bondage', 'bdsm', 'fetish',
+    'orgasm', 'topless', 'upskirt', 'thong', 'lingerie'
+  ];
+
+  let badwordsSet = new Set(CORE_FLAGGED_WORDS);
+  let testRegex = new RegExp(`\\b(?:${CORE_FLAGGED_WORDS.map(escapeRegExp).join('|')})\\b`, 'i');
+  let filterRegex = null;
+  let scanRegex = null;
+  let pageRegex = null;
+
+  function checkTextForFlaggedKeywords(text) {
+    if (!text || typeof text !== 'string') return null;
+    const clean = text.trim();
+    if (clean.length < 3) return null;
+
+    if (pageRegex) {
+      pageRegex.lastIndex = 0;
+      const match = pageRegex.exec(clean);
+      if (match) return match[0];
+    }
+
+    if (testRegex) {
+      const match = testRegex.exec(clean);
+      if (match) return match[0];
+    }
+
+    if (scanRegex) {
+      scanRegex.lastIndex = 0;
+      const match = scanRegex.exec(clean);
+      scanRegex.lastIndex = 0;
+      if (match) return match[0];
+    }
+
+    if (badwordsSet && badwordsSet.size > 0) {
+      const words = clean.toLowerCase().split(/[\s,._\-+/\\?&=#]+/);
+      for (const w of words) {
+        if (w.length >= 3 && badwordsSet.has(w)) {
+          return w;
+        }
+      }
+    }
+    return null;
+  }
+
+  function triggerInputBlocked(hit, target) {
+    if (scanPrompted || scanAcknowledged) return;
+    console.log(`⚡ [BlockX] Flagged keyword "${hit}" detected in input! Prompting immediately.`);
+    if (target && target.blur) {
+      try { target.blur(); } catch {}
+    }
+    raiseBarrier(BARRIER_FROZEN);
+    try { freezeMedia(); } catch {}
+    try {
+      showScanPrompt();
+    } catch (e) {
+      console.warn('[BlockX] Prompt failed; keeping page blurred.', e);
+      raiseBarrier(BARRIER_FROZEN);
+      try { freezeMedia(); } catch {}
+    }
+  }
+
+  function checkAllInputsOnPage() {
+    if (scanPrompted || scanAcknowledged) return false;
+    const inputs = document.querySelectorAll('input, textarea, [contenteditable="true"], [role="searchbox"], [role="combobox"]');
+    for (const el of inputs) {
+      const text = el.value || el.innerText || el.textContent || '';
+      const hit = checkTextForFlaggedKeywords(text);
+      if (hit) {
+        triggerInputBlocked(hit, el);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function handleRealtimeInput(e) {
+    if (scanPrompted || scanAcknowledged) return;
+    const target = e.target;
+    if (!target) return;
+
+    let text = '';
+    if (typeof target.value === 'string') {
+      text = target.value;
+    } else if (target.isContentEditable) {
+      text = target.innerText || target.textContent || '';
+    } else {
+      return;
+    }
+
+    const hit = checkTextForFlaggedKeywords(text);
+    if (hit) {
+      triggerInputBlocked(hit, target);
+    }
+  }
+
+  // Attach capture-phase input listeners immediately at script evaluation
+  ['input', 'beforeinput', 'keyup', 'change', 'paste', 'focusin'].forEach(type => {
+    window.addEventListener(type, handleRealtimeInput, true);
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const active = document.activeElement;
+      const text = active ? (active.value || active.innerText || active.textContent || '') : '';
+      const hit = checkTextForFlaggedKeywords(text);
+      if (hit) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        triggerInputBlocked(hit, active);
+      }
+    }
+  }, true);
+
+  window.addEventListener('submit', (e) => {
+    const form = e.target;
+    if (form && form.querySelectorAll) {
+      const inputs = form.querySelectorAll('input, textarea, [contenteditable]');
+      for (const input of inputs) {
+        const text = input.value || input.innerText || input.textContent || '';
+        const hit = checkTextForFlaggedKeywords(text);
+        if (hit) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          triggerInputBlocked(hit, input);
+          return;
+        }
+      }
+    }
+  }, true);
+
+  window.addEventListener('click', (e) => {
+    const target = e.target;
+    if (!target) return;
+    const isSearchBtn = target.closest && target.closest('button, [role="button"], input[type="submit"], [aria-label*="search" i], [aria-label*="Search" i]');
+    if (isSearchBtn) {
+      if (checkAllInputsOnPage()) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    }
+  }, true);
+
+  // Active polling: scans the active element and all inputs every 80ms
+  setInterval(() => {
+    if (scanPrompted || scanAcknowledged) return;
+    if (document.activeElement) {
+      const el = document.activeElement;
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable) {
+        const text = el.value || el.innerText || el.textContent || '';
+        const hit = checkTextForFlaggedKeywords(text);
+        if (hit) {
+          triggerInputBlocked(hit, el);
+          return;
+        }
+      }
+    }
+  }, 80);
+
   // --- 2. YOUTUBE SHORTS CSS INJECTION ---
   if (window.location.hostname.includes('youtube.com')) {
     const shortsStyle = document.createElement('style');
@@ -110,11 +284,16 @@
   // --- 4. LISTEN FOR MAIN WORLD SPA BLOCKED NOTIFICATIONS & POPSTATE ---
   window.addEventListener('message', (event) => {
     if (event.data && (event.data.type === 'SHORTS_BLOCKED' || event.data.type === 'URL_CHANGED')) {
-      verifyPageSafety();
+      const targetUrl = event.data.url || window.location.href;
+      checkAllInputsOnPage();
+      verifyPageSafety(targetUrl);
     }
   });
 
-  window.addEventListener('popstate', () => { verifyPageSafety(); });
+  window.addEventListener('popstate', () => {
+    checkAllInputsOnPage();
+    verifyPageSafety(window.location.href);
+  });
   document.addEventListener('yt-navigate-finish', () => { verifyPageSafety(); });
   
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -123,7 +302,6 @@
     }
   });
 
-  let filterRegex = null;
   const storage = chrome.storage.session || chrome.storage.local;
 
   async function prepareFilter() {
@@ -142,10 +320,13 @@
             badwords = [];
           }
         }
-        const allKeywords = CONFIG.KEYWORDS.concat(badwords);
+        const allKeywords = CONFIG.KEYWORDS.concat(badwords || []).concat(CORE_FLAGGED_WORDS);
         filterRegex = createOptimizedFilter(allKeywords);
         scanRegex = createBoundedFilter(allKeywords);
         pageRegex = createBoundedFilter(CONFIG.PAGE_KEYWORDS || []);
+        badwordsSet = new Set(allKeywords.map(k => String(k || '').trim().toLowerCase()).filter(k => k.length >= 3));
+        const validForTest = [...badwordsSet].sort((a, b) => b.length - a.length);
+        testRegex = new RegExp(`\\b(?:${validForTest.map(escapeRegExp).join('|')})\\b`, 'i');
         resolve();
       });
     });
@@ -180,8 +361,6 @@
   // out the moment the threshold is met. Distinct-term counting is what keeps
   // an article that says one word twenty times from tripping the warning.
 
-  let scanRegex = null;
-  let pageRegex = null;
   let scanPrompted = false;
   let scanAcknowledged = false;
   let scanThrottleId = null;
@@ -206,28 +385,63 @@
     const threshold = Math.max(1, parseInt(CONFIG.SCAN_SENSITIVITY, 10) || 2);
     const found = new Set();
     const pageFound = new Set();
+    let totalHits = 0;
 
-    // Page-only keywords are the user's own tripwires: a single hit is
-    // enough, and they are matched against page content only — never the
-    // URL, so typing the term into a search box cannot trip them.
-    const pageHit = (text) => countFlaggedTerms(text, pageRegex, pageFound, 1);
-    const mainHit = (text) => countFlaggedTerms(text, scanRegex, found, threshold);
+    function recordMatches(text, regex, set, isMain = true) {
+      if (!text || !regex) return false;
+      regex.lastIndex = 0;
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        set.add(match[0].toLowerCase());
+        if (isMain) totalHits++;
+      }
+      return set.size > 0;
+    }
 
-    // Metadata first — porn pages give themselves away here and it is cheap.
-    // Scoped to <head> on purpose: querying the whole document would walk the
-    // entire body before the text pass even starts.
-    if (pageHit(document.title)) return pageFound;
-    if (mainHit(document.title)) return found;
-    if (mainHit(extractSearchQuery(window.location.href))) return found;
+    const pageHit = (text) => recordMatches(text, pageRegex, pageFound, false);
+    const mainHit = (text) => {
+      recordMatches(text, scanRegex, found, true);
+      return found.size >= threshold || totalHits >= 2;
+    };
+
+    // 0. Search query inspection — Intent Rule: 1 hit trips immediately
+    const query = extractSearchQuery(window.location.href);
+    if (query) {
+      if (pageHit(query)) return pageFound;
+      recordMatches(query, scanRegex, found, true);
+      if (found.size > 0) return found;
+    }
+
+    // 1. Metadata and Title — Intent Rule: 1 hit in title or meta description trips immediately
+    if (document.title) {
+      if (pageHit(document.title)) return pageFound;
+      recordMatches(document.title, scanRegex, found, true);
+      if (found.size > 0) return found;
+    }
+
     if (document.head) {
       for (const meta of document.head.querySelectorAll('meta[name="description"], meta[name="keywords"], meta[property^="og:"]')) {
         const content = meta.getAttribute('content');
-        if (pageHit(content)) return pageFound;
-        if (mainHit(content)) return found;
+        if (content) {
+          if (pageHit(content)) return pageFound;
+          recordMatches(content, scanRegex, found, true);
+          if (found.size > 0) return found;
+        }
       }
     }
 
-    // 1. Text pass — walks visible body text (titles, descriptions, sidebars, knowledge panels)
+    // 2. Active input & search bar values (e.g. search box containing query)
+    const inputs = document.querySelectorAll('input[type="text"], input[type="search"], input:not([type]), textarea');
+    for (const input of inputs) {
+      const val = input.value;
+      if (val && typeof val === 'string') {
+        if (pageHit(val)) return pageFound;
+        recordMatches(val, scanRegex, found, true);
+        if (found.size > 0) return found;
+      }
+    }
+
+    // 3. Text pass — walks visible body text (titles, descriptions, sidebars, knowledge panels)
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
         if (!node.nodeValue || node.nodeValue.length < SCAN_MIN_TEXT_LENGTH) return NodeFilter.FILTER_REJECT;
@@ -245,24 +459,41 @@
       if (mainHit(node.nodeValue)) return found;
     }
 
-    // 2. Element attributes pass — checks image alt text, card/thumbnail aria-labels,
-    // and video descriptions across search results, Google Images, Google Videos, and side panels.
-    const elementsWithAttrs = document.body.querySelectorAll('img[alt], img[title], [aria-label], [title], [data-title], [data-alt]');
+    // 4. Element attributes pass — checks image alt text, descriptions, pins, cards, and links
+    const elementsWithAttrs = document.body.querySelectorAll(
+      'img[alt], img[title], img[data-pin-description], img[src], [aria-label], [title], [data-title], [data-alt], [data-test-id], a[href]'
+    );
     let attrVisited = 0;
-    const ATTR_LIMIT = 3000;
+    const ATTR_LIMIT = 3500;
     for (const el of elementsWithAttrs) {
       if (++attrVisited > ATTR_LIMIT) break;
+
       if (el.tagName === 'IMG') {
         if (el.alt) {
           if (pageHit(el.alt)) return pageFound;
           if (mainHit(el.alt)) return found;
+        }
+        const imgDesc = el.getAttribute('data-pin-description');
+        if (imgDesc) {
+          if (pageHit(imgDesc)) return pageFound;
+          if (mainHit(imgDesc)) return found;
         }
         const imgTitle = el.getAttribute('title');
         if (imgTitle) {
           if (pageHit(imgTitle)) return pageFound;
           if (mainHit(imgTitle)) return found;
         }
+      } else if (el.tagName === 'A') {
+        const href = el.getAttribute('href');
+        if (href && href.length > 5 && !href.startsWith('#') && !href.startsWith('javascript:')) {
+          try {
+            const decoded = decodeURIComponent(href);
+            if (pageHit(decoded)) return pageFound;
+            if (mainHit(decoded)) return found;
+          } catch {}
+        }
       }
+
       const aria = el.getAttribute('aria-label');
       if (aria) {
         if (pageHit(aria)) return pageFound;
@@ -285,12 +516,15 @@
       }
     }
 
-    return found.size >= threshold ? found : null;
+    return (found.size >= threshold || totalHits >= 2) ? found : null;
   }
 
   function runContentScan() {
     if (!isTopFrame || scanPrompted || scanAcknowledged) return false;
     if (isScanExcluded()) return false;
+
+    // Direct check of all inputs on page
+    if (checkAllInputsOnPage()) return true;
 
     const hits = scanPage();
     if (!hits) return false;
@@ -814,9 +1048,12 @@
   // --- PHASE 3: Prepare keyword filter and do full page verification ---
   await prepareFilter();
 
-  function verifyPageSafety() {
-    const currentUrl = window.location.href;
+  function verifyPageSafety(customUrl) {
+    const currentUrl = customUrl || window.location.href;
     const currentHost = window.location.hostname;
+
+    // Check all inputs on the page right now as part of safety check
+    if (checkAllInputsOnPage()) return true;
 
     // A route change is a fresh page as far as the scan is concerned.
     const routeChanged = currentUrl !== scanUrl;
@@ -824,6 +1061,13 @@
       scanUrl = currentUrl;
       scanAcknowledged = false;
       cancelRescan();
+    }
+
+    // IMMEDIATE check on search query: if URL has an explicit search query, catch it with 0ms delay!
+    const query = extractSearchQuery(currentUrl);
+    if (query && checkTextForFlaggedKeywords(query)) {
+      console.log(`⚡ [BlockX] Immediate search query flagged on URL: "${query}"`);
+      return runContentScan();
     }
 
     if (
@@ -850,6 +1094,9 @@
     return runContentScan();
   }
 
+  // Check immediately upon site arrival (at document_start, no waiting for DOMContentLoaded!)
+  verifyPageSafety();
+
   const cleanup = () => {
     if (!verifyPageSafety()) {
       dropBarrier();
@@ -859,7 +1106,8 @@
   const observer = new MutationObserver(() => {
     if (scanPrompted || scanAcknowledged) return;
     if (document.title) verifyPageSafety();
-    // Late-loading content (infinite scroll, SPA routes) gets a throttled pass.
+    checkAllInputsOnPage();
+    // Late-loading content (infinite scroll, SPA routes) gets an ultra-fast throttled pass.
     scheduleRescan();
   });
 

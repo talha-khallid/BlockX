@@ -542,10 +542,22 @@ function extractSearchQuery(urlStr) {
     if (value) found.push(value);
   }
 
-  // Some sites carry the terms in the path, e.g. /search/free+porn
-  const pathMatch = parsed.pathname.match(/\/(?:search|results|tag|tags|q)\/([^/]+)/i);
-  if (pathMatch) {
-    try { found.push(decodeURIComponent(pathMatch[1])); } catch { found.push(pathMatch[1]); }
+  // Also check common search query param names if none found yet
+  if (found.length === 0) {
+    const commonParams = ['q', 'query', 'search_query', 'searchTerm', 'keyword', 'term', 'text', 'k', 'w', 'p', 's'];
+    for (const key of commonParams) {
+      const value = parsed.searchParams.get(key);
+      if (value) found.push(value);
+    }
+  }
+
+  // Some sites carry the terms in the path, e.g. /search/free+porn or /tag/nsfw
+  // Only use path match if query parameters did not already supply the terms
+  if (found.length === 0) {
+    const pathMatch = parsed.pathname.match(/\/(?:search|results|tag|tags|q)\/(?!pins|boards|videos|my_pins|all|top|images)([^/]+)/i);
+    if (pathMatch) {
+      try { found.push(decodeURIComponent(pathMatch[1])); } catch { found.push(pathMatch[1]); }
+    }
   }
 
   return found.join(' ').replace(/[+_\-.]+/g, ' ').trim();
@@ -574,13 +586,11 @@ function createBoundedFilter(keywords) {
 const SCAN_NODE_LIMIT = 6000;
 const SCAN_MIN_TEXT_LENGTH = 3;
 
-// How long the document must stop changing before it is judged. After a route
-// change the page still holds the previous view for a moment, so scanning
-// straight away would grade the page being left rather than the one arriving.
-const SCAN_THROTTLE_MS = 800;
+// Ultra-fast throttle: judges documents almost instantly (like Everything 1.5)
+const SCAN_THROTTLE_MS = 60;
 
-// ...but a page that never stops mutating still has to be looked at.
-const SCAN_MAX_DEFER_MS = 4000;
+// Maximum deferral cap so streaming / constantly mutating pages are still checked promptly
+const SCAN_MAX_DEFER_MS = 250;
 
 function getBlockUrl(method, hostname, extensionUrl) {
   if (method === 'blocked_page' && CONFIG.SHOW_GAME_INSTANTLY && CONFIG.GAMES.length > 0) {
