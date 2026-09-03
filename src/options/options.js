@@ -266,6 +266,7 @@ function applyWeakeningChange(staged) {
 function setupWeakeningModal() {
     const proceedBtn = document.getElementById('weakening-proceed-btn');
     const goBackBtn = document.getElementById('weakening-goback-btn');
+    const modal = document.getElementById('weakening-modal');
 
     if (proceedBtn) {
         proceedBtn.addEventListener('click', () => {
@@ -283,6 +284,22 @@ function setupWeakeningModal() {
             showToast('Nothing changed — protection stays as it was.');
         });
     }
+
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                hideWeakeningModal();
+                showToast('Nothing changed — protection stays as it was.');
+            }
+        });
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
+            hideWeakeningModal();
+            showToast('Nothing changed — protection stays as it was.');
+        }
+    });
 }
 
 function setupWeakeningSettings() {

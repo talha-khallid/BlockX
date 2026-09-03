@@ -559,21 +559,12 @@
             </div>
         </div>
 
-        <!-- Loosening Protection Warning Modal -->
-        <div id="weakening-modal" class="oath-overlay hidden">
-            <div class="oath-card removal-card">
-                <h2>Read this first</h2>
+        <!-- Protection Confirmation Warning Modal -->
+        <div id="weakening-modal" class="confirm-modal-overlay hidden">
+            <div class="confirm-modal-card">
+                <p id="weakening-warning-text" class="confirm-warning-text" dir="auto"></p>
 
-                <div class="removal-custom-box">
-                    <span class="removal-custom-label">Your Warning Message</span>
-                    <div id="weakening-warning-text" class="removal-phrase-box" style="margin-top: 6px; font-family: inherit; font-style: italic;"></div>
-                </div>
-
-                <p class="oath-question" style="margin-top: 14px;">
-                    <span id="weakening-action-desc"></span>
-                </p>
-
-                <div class="oath-actions">
+                <div class="confirm-modal-actions">
                     <button id="weakening-proceed-btn" class="btn btn-primary" type="button">Yes, Go Ahead</button>
                     <button id="weakening-goback-btn" class="btn btn-secondary" type="button">No, Don't Change</button>
                 </div>
