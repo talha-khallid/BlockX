@@ -217,7 +217,7 @@ function describeWeakeningAction(staged) {
         return `You are removing "${staged.value}" from ${label}. This weakens your protection.`;
     }
     if (staged.stateKey === 'CUSTOM_ALLOWED_DOMAINS') {
-        return `You are adding "${staged.value}" to the whitelist. It will bypass every blocking rule and never be scanned.`;
+        return `You are adding "${staged.value}" to the whitelist. It will bypass every blocking rule, but will still be scanned by the live scanner.`;
     }
     return `You are exempting "${staged.value}" from content scanning.`;
 }

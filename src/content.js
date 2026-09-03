@@ -99,12 +99,7 @@
     return matchesAnyHostEntry(window.location.hostname, window.location.port, CONFIG.ALLOWED_DOMAINS);
   }
 
-  // If the site is whitelisted (and not a search result page), drop the barrier and shut down completely.
-  if (isWhitelisted()) {
-    console.log('🛡️ [BlockX] Site is whitelisted. Removing barrier.');
-    dropBarrier();
-    return;
-  }
+  // Whitelisted sites bypass domain/page blocking rules, but proceed to live scanning below.
 
   function isScanExcluded() {
     if (!CONFIG) return false;
@@ -295,7 +290,7 @@
 
   function runContentScan() {
     if (!isTopFrame || scanPrompted || scanAcknowledged) return false;
-    if (isWhitelisted() || isScanExcluded()) return false;
+    if (isScanExcluded()) return false;
 
     const hits = scanPage();
     if (!hits) return false;
@@ -820,8 +815,6 @@
   await prepareFilter();
 
   function verifyPageSafety() {
-    if (isWhitelisted()) return false;
-
     const currentUrl = window.location.href;
     const currentHost = window.location.hostname;
 
@@ -834,11 +827,13 @@
     }
 
     if (
-      isBlockedDomain(currentHost) ||
-      isBlockedPage(currentUrl) ||
-      isExactBlockedPage(currentUrl) ||
-      isExplicit(document.title) ||
-      isExplicit(currentUrl)
+      !isWhitelisted() && (
+        isBlockedDomain(currentHost) ||
+        isBlockedPage(currentUrl) ||
+        isExactBlockedPage(currentUrl) ||
+        isExplicit(document.title) ||
+        isExplicit(currentUrl)
+      )
     ) {
       if (typeof observer !== 'undefined') observer.disconnect();
       handleBlock();
@@ -858,9 +853,6 @@
   const cleanup = () => {
     if (!verifyPageSafety()) {
       dropBarrier();
-    }
-    if (typeof observer !== 'undefined' && isWhitelisted()) {
-      observer.disconnect();
     }
   };
 
