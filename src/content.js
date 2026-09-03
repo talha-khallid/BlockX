@@ -597,78 +597,50 @@
     .card {
       box-sizing: border-box;
       width: 100%;
-      max-width: 440px;
+      max-width: 480px;
       max-height: calc(100vh - 48px);
       overflow-y: auto;
-      padding: 40px 36px;
-      text-align: center;
-      border-radius: 20px;
+      padding: 24px;
+      text-align: left;
+      border-radius: 16px;
       border: 1px solid #3f3f46;
       background: #1c1c1c;
       color: #f9fafb;
-      box-shadow: 0 32px 64px -12px rgba(0, 0, 0, 0.7);
-      animation: blockx-rise 260ms cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.7);
+      animation: blockx-rise 200ms cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    .mark {
-      width: 56px;
-      height: 56px;
-      margin: 0 auto 22px;
-      border-radius: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(25, 0, 255, 0.14);
-      color: #8b7cff;
-    }
-    .mark svg { width: 26px; height: 26px; }
-
-    h2 {
-      margin: 0 0 16px;
-      font-size: 20px;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      color: inherit;
-    }
-
-    /* The user's own warning words sit in a soft inset panel, the same
-       language the dashboard modal uses, so they read as *their* message,
-       not as system text. dir="auto" on the <p> keeps RTL scripts natural. */
-    .msg {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 14px;
-      padding: 16px 18px;
-      margin: 0 0 26px;
-      max-height: 38vh;
-      overflow-y: auto;
-    }
-    .msg-label {
-      display: block;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: #71717a;
-      margin-bottom: 8px;
-    }
-    .msg p {
-      margin: 0;
-      font-size: 15.5px;
+    .warning-text {
+      margin: 0 0 22px 0;
+      font-size: 18px;
+      font-weight: 600;
       line-height: 1.7;
-      color: #d4d4d8;
+      color: inherit;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
+      word-break: break-word;
+      unicode-bidi: plaintext;
+      text-align: start;
     }
 
     /* The card holds two views: the warning, then the "are you sure" gate. */
     .view[hidden] { display: none !important; }
 
+    h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: inherit;
+      text-align: start;
+    }
+
     .hint {
-      margin: 0 0 26px;
-      font-size: 14.5px;
-      line-height: 1.65;
+      margin: 0 0 20px;
+      font-size: 14px;
+      line-height: 1.5;
       color: #a1a1aa;
+      text-align: start;
     }
 
     button {
@@ -678,8 +650,8 @@
       font-family: inherit;
       font-size: 14px;
       font-weight: 600;
-      padding: 13px 20px;
-      border-radius: 12px;
+      padding: 11px 16px;
+      border-radius: 10px;
       border: 1px solid transparent;
       cursor: pointer;
       transition: background 0.15s, color 0.15s, border-color 0.15s;
@@ -689,7 +661,7 @@
     .leave { background: #f9fafb; color: #111827; margin-bottom: 10px; }
     .leave:hover { background: #ffffff; }
 
-    .show { background: transparent; color: #71717a; border-color: #3f3f46; }
+    .show { background: transparent; color: #a1a1aa; border-color: #3f3f46; }
     .show:hover { color: #f9fafb; border-color: #71717a; }
 
     /* Light dashboard theme */
@@ -702,12 +674,9 @@
       background: #ffffff;
       border-color: #e5e7eb;
       color: #111827;
-      box-shadow: 0 32px 64px -12px rgba(0, 0, 0, 0.18);
+      box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.18);
     }
-    :host([data-theme="light"]) .mark { background: rgba(25, 0, 255, 0.06); color: #1900FF; }
-    :host([data-theme="light"]) .msg { background: #f9fafb; border-color: #e5e7eb; }
-    :host([data-theme="light"]) .msg p { color: #374151; }
-    :host([data-theme="light"]) .msg-label { color: #6b7280; }
+    :host([data-theme="light"]) .warning-text { color: #111827; }
     :host([data-theme="light"]) .hint { color: #6b7280; }
     :host([data-theme="light"]) .leave { background: #111827; color: #ffffff; }
     :host([data-theme="light"]) .leave:hover { background: #000000; }
@@ -716,7 +685,7 @@
 
     @keyframes blockx-fade { from { opacity: 0; } to { opacity: 1; } }
     @keyframes blockx-rise {
-      from { opacity: 0; transform: translateY(12px) scale(0.97); }
+      from { opacity: 0; transform: translateY(8px) scale(0.97); }
       to { opacity: 1; transform: none; }
     }
 
@@ -803,29 +772,17 @@
     const card = document.createElement('div');
     card.className = 'card';
 
-    // Stage 1 — the warning itself, carrying the user's own message.
+    // Stage 1 — the warning itself, carrying the user's own message directly on top.
     const view1 = document.createElement('div');
     view1.className = 'view';
 
-    const heading = document.createElement('h2');
-    heading.textContent = 'Explicit content detected';
-
     const message = document.createElement('p');
+    message.className = 'warning-text';
     message.dir = 'auto';
     message.textContent = (CONFIG.WEAKENING_MESSAGE || '').trim()
       || 'This page looks explicit. Do you still want to open it?';
 
-    const msgBox = document.createElement('div');
-    msgBox.className = 'msg';
-    const msgLabel = document.createElement('span');
-    msgLabel.className = 'msg-label';
-    msgLabel.textContent = 'Your warning message';
-    msgBox.appendChild(msgLabel);
-    msgBox.appendChild(message);
-
-    view1.appendChild(makeMark('M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'));
-    view1.appendChild(heading);
-    view1.appendChild(msgBox);
+    view1.appendChild(message);
 
     // Stage 2 — a second, plainer gate shown after the first "yes".
     const view2 = document.createElement('div');
@@ -839,7 +796,6 @@
     hint.className = 'hint';
     hint.textContent = 'This page will be unblurred and shown. Only continue if you truly mean to.';
 
-    view2.appendChild(makeMark('M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01'));
     view2.appendChild(heading2);
     view2.appendChild(hint);
 
