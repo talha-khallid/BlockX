@@ -850,12 +850,10 @@
       }
 
       // 3. Ensure the barrier is attached and the page is actually blurred.
-      //    Checking the rendered effect instead of the exact CSS text means
-      //    a site that re-serialises or tidies style tags cannot trip a
-      //    false tamper alarm — only a real loss of the blur heals+logs.
+      const hasBarrier = document.contains(securityBarrier);
       const bodyStyle = document.body ? window.getComputedStyle(document.body) : null;
-      const blurred = !!(bodyStyle && (bodyStyle.filter || bodyStyle.webkitFilter || '').includes('blur'));
-      if (!document.documentElement.contains(securityBarrier) || !blurred) {
+      const blurred = document.body ? !!(bodyStyle && (bodyStyle.filter || bodyStyle.webkitFilter || '').includes('blur')) : true;
+      if (!hasBarrier || !blurred) {
         noteTamper('barrier', '[BlockX] Security barrier removed or weakened — re-attaching.');
         raiseBarrier(BARRIER_FROZEN);
       }
