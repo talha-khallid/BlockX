@@ -31,6 +31,22 @@
 
   const isTopFrame = window.top === window.self;
 
+  // ------------------------------------------------------------------
+  // 📦 TOP-LEVEL STATE VARIABLES (DECLARED FIRST TO PREVENT TDZ ERRORS)
+  // ------------------------------------------------------------------
+  let tabUnlocked = false;
+  let scanPrompted = false;
+  let scanAcknowledged = false;
+  let scanThrottleId = null;
+  let scanDeadline = 0;
+  let scanUrl = window.location.href;
+  let observer = null;
+  let realtimeInputInterval = null;
+  let activeTamperObserver = null;
+  let activeTamperInterval = null;
+  const mutedMedia = [];
+  const tamperNotes = new Set();
+
   function raiseBarrier(css) {
     securityBarrier.textContent = css;
     if (document.documentElement && !document.documentElement.contains(securityBarrier)) {
@@ -62,7 +78,6 @@
 
   // A pass belongs to one tab, and only the service worker knows which tab
   // this is, so it is asked once per page load.
-  let tabUnlocked = false;
   try {
     const reply = await chrome.runtime.sendMessage({
       action: 'isTabUnlocked',
@@ -93,6 +108,14 @@
   function dismissScanPrompt() {
     scanPrompted = false;
     scanAcknowledged = false;
+    if (activeTamperObserver) {
+      activeTamperObserver.disconnect();
+      activeTamperObserver = null;
+    }
+    if (activeTamperInterval) {
+      clearInterval(activeTamperInterval);
+      activeTamperInterval = null;
+    }
     cancelRescan();
     const promptHost = document.getElementById('blockx-scan-prompt');
     if (promptHost) promptHost.remove();
@@ -178,13 +201,15 @@
   function checkAllInputsOnPage() {
     if (isScanExcluded()) return false;
     if (scanPrompted || scanAcknowledged) return false;
-    const inputs = document.querySelectorAll('input, textarea, [contenteditable="true"], [role="searchbox"], [role="combobox"]');
+    const inputs = document.querySelectorAll('input, textarea, [contenteditable="true"], [role="textbox"], [role="searchbox"]');
     for (const el of inputs) {
-      const text = el.value || el.innerText || el.textContent || '';
-      const hit = checkTextForFlaggedKeywords(text);
-      if (hit) {
-        triggerInputBlocked(hit, el);
-        return true;
+      const text = el.value || (el.isContentEditable ? (el.innerText || el.textContent || '') : '');
+      if (text) {
+        const hit = checkTextForFlaggedKeywords(text);
+        if (hit) {
+          triggerInputBlocked(hit, el);
+          return true;
+        }
       }
     }
     return false;
@@ -265,7 +290,7 @@
   }, true);
 
   // Active polling: scans the active element and all inputs every 80ms
-  setInterval(() => {
+  realtimeInputInterval = setInterval(() => {
     if (isScanExcluded()) return;
     if (scanPrompted || scanAcknowledged) return;
     if (document.activeElement) {
@@ -370,6 +395,24 @@
   function handleBlock() {
     if (isWhitelisted()) return;
 
+    if (realtimeInputInterval) {
+      clearInterval(realtimeInputInterval);
+      realtimeInputInterval = null;
+    }
+    if (observer) {
+      observer.disconnect();
+      observer = null;
+    }
+    if (activeTamperObserver) {
+      activeTamperObserver.disconnect();
+      activeTamperObserver = null;
+    }
+    if (activeTamperInterval) {
+      clearInterval(activeTamperInterval);
+      activeTamperInterval = null;
+    }
+    cancelRescan();
+
     const hostname = window.location.hostname;
     const targetUrl = getBlockUrl(CONFIG.BLOCK_METHOD, hostname);
 
@@ -395,11 +438,6 @@
   // Walks the visible text once, counting DISTINCT flagged terms and bailing
   // out the moment the threshold is met. Distinct-term counting is what keeps
   // an article that says one word twenty times from tripping the warning.
-
-  let scanPrompted = false;
-  let scanAcknowledged = false;
-  let scanThrottleId = null;
-  let scanUrl = window.location.href;
 
   const SKIP_TAGS = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEMPLATE: 1, TEXTAREA: 1, CODE: 1, PRE: 1 };
 
@@ -577,8 +615,6 @@
     return true;
   }
 
-  let scanDeadline = 0;
-
   /**
    * Waits for the document to settle before judging it. Each further change
    * pushes the scan back, so a page mid-render is never graded on what it
@@ -731,7 +767,6 @@
   `;
 
   // Audio keeps playing behind a blur, so anything already running is stopped.
-  const mutedMedia = [];
   function freezeMedia() {
     for (const el of document.querySelectorAll('video, audio')) {
       mutedMedia.push([el, el.muted]);
@@ -755,7 +790,6 @@
   // Self-healing runs on busy pages whose own scripts constantly touch the
   // DOM; log each kind of repair once so the console is not spammed while
   // the protection quietly holds.
-  const tamperNotes = new Set();
   function noteTamper(key, msg) {
     if (tamperNotes.has(key)) return;
     tamperNotes.add(key);
@@ -911,8 +945,10 @@
     const reveal = () => {
       scanAcknowledged = true;
       scanPrompted = false;
-      if (tamperObserver) tamperObserver.disconnect();
-      if (tamperInterval) clearInterval(tamperInterval);
+      if (tamperObserver) { tamperObserver.disconnect(); tamperObserver = null; }
+      if (tamperInterval) { clearInterval(tamperInterval); tamperInterval = null; }
+      activeTamperObserver = null;
+      activeTamperInterval = null;
       KEY_EVENTS.forEach(type => window.removeEventListener(type, keepKeys, true));
       if (host.parentNode) host.parentNode.removeChild(host);
       thawMedia();
@@ -976,6 +1012,8 @@
       });
 
       tamperInterval = setInterval(enforceOverlayIntegrity, 300);
+      activeTamperObserver = tamperObserver;
+      activeTamperInterval = tamperInterval;
     }, 100);
   }
 
@@ -1061,7 +1099,7 @@
           isExactBlockedPage(currentUrl)
         )
       ) {
-        if (typeof observer !== 'undefined') observer.disconnect();
+        if (observer) observer.disconnect();
         handleBlock();
         return true;
       }
@@ -1095,7 +1133,7 @@
         isExplicit(currentUrl)
       )
     ) {
-      if (typeof observer !== 'undefined') observer.disconnect();
+      if (observer) observer.disconnect();
       handleBlock();
       return true;
     }
@@ -1119,7 +1157,7 @@
     }
   };
 
-  const observer = new MutationObserver(() => {
+  observer = new MutationObserver(() => {
     if (isScanExcluded()) return;
     if (scanPrompted || scanAcknowledged) return;
     if (document.title) verifyPageSafety();

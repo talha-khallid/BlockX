@@ -243,6 +243,7 @@ function escapeRegExp(string) {
 /**
  * Creates a single optimized RegExp from an array of keywords.
  * Big O: O(N) where N is text length during search, instead of O(N*K).
+ * Uses word boundaries to avoid false positives (e.g. "ass" in "assistant", "anal" in "analysis").
  */
 function createOptimizedFilter(keywords) {
   if (!keywords || keywords.length === 0) return null;
@@ -253,9 +254,10 @@ function createOptimizedFilter(keywords) {
   
   if (validKeywords.length === 0) return null;
   
-  // Combine into a single alternation: (word1|word2|word3)
-  const pattern = validKeywords.map(escapeRegExp).join('|');
-  return new RegExp(pattern, 'i');
+  // Combine into a single alternation: \b(?:word1|word2|word3)\b
+  const sorted = [...new Set(validKeywords)].sort((a, b) => b.length - a.length);
+  const pattern = sorted.map(escapeRegExp).join('|');
+  return new RegExp(`\\b(?:${pattern})\\b`, 'i');
 }
 
 // ------------------------------------------------------------------
