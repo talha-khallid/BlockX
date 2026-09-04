@@ -43,7 +43,65 @@
   }
 
   // ------------------------------------------------------------------
-  // ⚡ REAL-TIME INSTANT INPUT & KEYSTROKE SCANNER (MILLISECOND 0)
+  // 🛡️ CONFIG & INITIALIZATION
+  // ------------------------------------------------------------------
+  await loadConfig();
+
+  function isScanExcluded(customUrl) {
+    if (!CONFIG || !Array.isArray(CONFIG.SCAN_EXCLUDED) || CONFIG.SCAN_EXCLUDED.length === 0) {
+      return false;
+    }
+    try {
+      const at = customUrl ? new URL(customUrl, window.location.href) : window.location;
+      return matchesAnyScanExclusion(at.hostname, at.port, at.pathname, at.search, CONFIG.SCAN_EXCLUDED);
+    } catch {
+      const at = window.location;
+      return matchesAnyScanExclusion(at.hostname, at.port, at.pathname, at.search, CONFIG.SCAN_EXCLUDED);
+    }
+  }
+
+  // A pass belongs to one tab, and only the service worker knows which tab
+  // this is, so it is asked once per page load.
+  let tabUnlocked = false;
+  try {
+    const reply = await chrome.runtime.sendMessage({
+      action: 'isTabUnlocked',
+      host: window.location.hostname
+    });
+    tabUnlocked = !!(reply && reply.unlocked);
+  } catch { /* service worker asleep or reloading */ }
+
+  function isSearchPage() {
+    const at = window.location;
+    if (extractSearchQuery(at.href)) return true;
+    const host = at.hostname.toLowerCase();
+    if (host.includes('google.') || host.includes('bing.com') || host.includes('duckduckgo.com') || host.includes('yahoo.com') || host.includes('yandex.')) {
+      if (at.pathname.includes('/search') || at.pathname.includes('/images') || at.pathname.includes('/videos') || at.pathname.includes('/imgres')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function isWhitelisted(ignoreSearch = false) {
+    if (!CONFIG) return false;
+    if (tabUnlocked) return true;
+    if (!ignoreSearch && isSearchPage()) return false;
+    return matchesAnyHostEntry(window.location.hostname, window.location.port, CONFIG.ALLOWED_DOMAINS);
+  }
+
+  function dismissScanPrompt() {
+    scanPrompted = false;
+    scanAcknowledged = false;
+    cancelRescan();
+    const promptHost = document.getElementById('blockx-scan-prompt');
+    if (promptHost) promptHost.remove();
+    dropBarrier();
+    try { thawMedia(); } catch {}
+  }
+
+  // ------------------------------------------------------------------
+  // ⚡ REAL-TIME INSTANT INPUT & KEYSTROKE SCANNER
   // ------------------------------------------------------------------
   const CORE_FLAGGED_WORDS = [
     'porn', 'porno', 'pornography', 'pornhub',
@@ -100,6 +158,7 @@
   }
 
   function triggerInputBlocked(hit, target) {
+    if (isScanExcluded()) return;
     if (scanPrompted || scanAcknowledged) return;
     console.log(`⚡ [BlockX] Flagged keyword "${hit}" detected in input! Prompting immediately.`);
     if (target && target.blur) {
@@ -117,6 +176,7 @@
   }
 
   function checkAllInputsOnPage() {
+    if (isScanExcluded()) return false;
     if (scanPrompted || scanAcknowledged) return false;
     const inputs = document.querySelectorAll('input, textarea, [contenteditable="true"], [role="searchbox"], [role="combobox"]');
     for (const el of inputs) {
@@ -131,6 +191,7 @@
   }
 
   function handleRealtimeInput(e) {
+    if (isScanExcluded()) return;
     if (scanPrompted || scanAcknowledged) return;
     const target = e.target;
     if (!target) return;
@@ -150,12 +211,13 @@
     }
   }
 
-  // Attach capture-phase input listeners immediately at script evaluation
+  // Attach capture-phase input listeners
   ['input', 'beforeinput', 'keyup', 'change', 'paste', 'focusin'].forEach(type => {
     window.addEventListener(type, handleRealtimeInput, true);
   });
 
   window.addEventListener('keydown', (e) => {
+    if (isScanExcluded()) return;
     if (e.key === 'Enter') {
       const active = document.activeElement;
       const text = active ? (active.value || active.innerText || active.textContent || '') : '';
@@ -170,6 +232,7 @@
   }, true);
 
   window.addEventListener('submit', (e) => {
+    if (isScanExcluded()) return;
     const form = e.target;
     if (form && form.querySelectorAll) {
       const inputs = form.querySelectorAll('input, textarea, [contenteditable]');
@@ -188,6 +251,7 @@
   }, true);
 
   window.addEventListener('click', (e) => {
+    if (isScanExcluded()) return;
     const target = e.target;
     if (!target) return;
     const isSearchBtn = target.closest && target.closest('button, [role="button"], input[type="submit"], [aria-label*="search" i], [aria-label*="Search" i]');
@@ -202,6 +266,7 @@
 
   // Active polling: scans the active element and all inputs every 80ms
   setInterval(() => {
+    if (isScanExcluded()) return;
     if (scanPrompted || scanAcknowledged) return;
     if (document.activeElement) {
       const el = document.activeElement;
@@ -238,67 +303,37 @@
     (document.head || document.documentElement).appendChild(shortsStyle);
   }
 
-  // ------------------------------------------------------------------
-  // 🛡️ 3. CONFIG & OMNI-WHITELIST
-  // ------------------------------------------------------------------
-  await loadConfig();
-
-  // A pass belongs to one tab, and only the service worker knows which tab
-  // this is, so it is asked once per page load.
-  let tabUnlocked = false;
-  try {
-    const reply = await chrome.runtime.sendMessage({
-      action: 'isTabUnlocked',
-      host: window.location.hostname
-    });
-    tabUnlocked = !!(reply && reply.unlocked);
-  } catch { /* service worker asleep or reloading */ }
-
-  function isSearchPage() {
-    const at = window.location;
-    if (extractSearchQuery(at.href)) return true;
-    const host = at.hostname.toLowerCase();
-    if (host.includes('google.') || host.includes('bing.com') || host.includes('duckduckgo.com') || host.includes('yahoo.com') || host.includes('yandex.')) {
-      if (at.pathname.includes('/search') || at.pathname.includes('/images') || at.pathname.includes('/videos') || at.pathname.includes('/imgres')) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  function isWhitelisted(ignoreSearch = false) {
-    if (!CONFIG) return false;
-    if (tabUnlocked) return true;
-    if (!ignoreSearch && isSearchPage()) return false;
-    return matchesAnyHostEntry(window.location.hostname, window.location.port, CONFIG.ALLOWED_DOMAINS);
-  }
-
-  // Whitelisted sites bypass domain/page blocking rules, but proceed to live scanning below.
-
-  function isScanExcluded() {
-    if (!CONFIG) return false;
-    const at = window.location;
-    return matchesAnyScanExclusion(at.hostname, at.port, at.pathname, at.search, CONFIG.SCAN_EXCLUDED);
-  }
-
-  // --- 4. LISTEN FOR MAIN WORLD SPA BLOCKED NOTIFICATIONS & POPSTATE ---
+  // --- 3. LISTEN FOR MAIN WORLD SPA BLOCKED NOTIFICATIONS & POPSTATE ---
   window.addEventListener('message', (event) => {
     if (event.data && (event.data.type === 'SHORTS_BLOCKED' || event.data.type === 'URL_CHANGED')) {
       const targetUrl = event.data.url || window.location.href;
-      checkAllInputsOnPage();
+      if (isScanExcluded(targetUrl)) {
+        dismissScanPrompt();
+      } else {
+        checkAllInputsOnPage();
+      }
       verifyPageSafety(targetUrl);
     }
   });
 
   window.addEventListener('popstate', () => {
-    checkAllInputsOnPage();
+    if (isScanExcluded(window.location.href)) {
+      dismissScanPrompt();
+    } else {
+      checkAllInputsOnPage();
+    }
     verifyPageSafety(window.location.href);
   });
   document.addEventListener('yt-navigate-finish', () => { verifyPageSafety(); });
   
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local') {
-      loadConfig().then(() => prepareFilter()).then(() => verifyPageSafety());
+      loadConfig().then(() => prepareFilter()).then(() => {
+        if (isScanExcluded()) {
+          dismissScanPrompt();
+        }
+        verifyPageSafety();
+      });
     }
   });
 
@@ -551,6 +586,7 @@
    * can be put off, so a page that never stops moving is still checked.
    */
   function scheduleRescan() {
+    if (isScanExcluded()) return;
     if (scanPrompted || scanAcknowledged) return;
 
     const now = Date.now();
@@ -750,6 +786,7 @@
    * sits behind the overlay's backdrop-filter and gets blurred out.
    */
   function showScanPrompt() {
+    if (isScanExcluded()) return;
     scanPrompted = true;
 
     const host = document.createElement('div');
@@ -999,12 +1036,37 @@
     console.warn('[BlockX] Could not check master domain list:', e);
   }
 
+  // Drop barrier early for excluded sites if safe
+  if (isScanExcluded()) {
+    dropBarrier();
+  }
+
   // --- PHASE 3: Prepare keyword filter and do full page verification ---
   await prepareFilter();
 
   function verifyPageSafety(customUrl) {
     const currentUrl = customUrl || window.location.href;
-    const currentHost = window.location.hostname;
+    let currentHost = window.location.hostname;
+    try {
+      if (customUrl) currentHost = new URL(customUrl, window.location.href).hostname;
+    } catch {}
+
+    // If this URL is scan excluded, live content and input scanning must never touch it.
+    if (isScanExcluded(currentUrl)) {
+      cancelRescan();
+      if (
+        !isWhitelisted() && (
+          isBlockedDomain(currentHost) ||
+          isBlockedPage(currentUrl) ||
+          isExactBlockedPage(currentUrl)
+        )
+      ) {
+        if (typeof observer !== 'undefined') observer.disconnect();
+        handleBlock();
+        return true;
+      }
+      return false;
+    }
 
     // Check all inputs on the page right now as part of safety check
     if (checkAllInputsOnPage()) return true;
@@ -1058,6 +1120,7 @@
   };
 
   const observer = new MutationObserver(() => {
+    if (isScanExcluded()) return;
     if (scanPrompted || scanAcknowledged) return;
     if (document.title) verifyPageSafety();
     checkAllInputsOnPage();

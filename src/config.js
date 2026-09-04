@@ -423,13 +423,23 @@ function scanExclusionMatches(hostname, port, pathname, search, entry) {
 
   if (host !== rule.host) return false;
 
-  const path = (String(pathname || '/')).replace(/\/+$/, '') || '/';
+  const rawPath = (String(pathname || '/')).replace(/\/+$/, '') || '/';
+  let decodedPath = rawPath;
+  try { decodedPath = decodeURIComponent(rawPath); } catch {}
+  let rulePath = rule.path;
+  let decodedRulePath = rule.path;
+  try { decodedRulePath = decodeURIComponent(rule.path); } catch {}
 
   if (rule.kind === 'section') {
-    return path === rule.path || path.startsWith(rule.path.replace(/\/$/, '') + '/');
+    const rawPrefix = rulePath.replace(/\/$/, '') + '/';
+    const decodedPrefix = decodedRulePath.replace(/\/$/, '') + '/';
+    return rawPath === rulePath ||
+           decodedPath === decodedRulePath ||
+           rawPath.startsWith(rawPrefix) ||
+           decodedPath.startsWith(decodedPrefix);
   }
 
-  if (path !== rule.path) return false;
+  if (rawPath !== rulePath && decodedPath !== decodedRulePath) return false;
   return !rule.query || String(search || '') === rule.query;
 }
 
